@@ -1,9 +1,9 @@
 local library = {count = 0, queue = {}, callbacks = {}, rainbowtable = {}, toggled = true, binds = {}};
 local defaults; do
     local dragger = {}; do
-        local mouse        = game:GetService("Players").LocalPlayer:GetMouse();
+        local mouse = game:GetService("Players").LocalPlayer:GetMouse();
         local inputService = game:GetService('UserInputService');
-        local heartbeat    = game:GetService("RunService").Heartbeat;
+        local heartbeat = game:GetService("RunService").Heartbeat;
         -- // credits to Ririchi / Inori for this cute drag function :)
         function dragger.new(frame)
             local s, event = pcall(function()
@@ -1002,7 +1002,7 @@ local defaults; do
                     BackgroundTransparency = 1;
                     Active = false;
                 });
-                Parent = gethui();
+                Parent = if gethui() then gethui() else game:GetService("CoreGui")
             }):FindFirstChild('Container');
         end
         if (not library.options) then
