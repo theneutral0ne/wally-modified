@@ -1002,7 +1002,7 @@ local defaults; do
                     BackgroundTransparency = 1;
                     Active = false;
                 });
-                Parent = if gethui() then gethui() else game:GetService("CoreGui")
+                Parent = gethui() or game:GetService("CoreGui")
             }):FindFirstChild('Container');
         end
         if (not library.options) then
