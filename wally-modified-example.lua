@@ -88,6 +88,7 @@ local SpeedSlider = window:Slider("Walk Speed", {
     max = 100,
     default = 16,
     precise = true,
+    decimals = 2, -- only used when precise = true
 }, function(Value)
     print("[Slider] WalkSpeed:", Value)
 end)
