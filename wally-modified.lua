@@ -79,6 +79,7 @@ local Defaults; do
                     Size = UDim2.new(1, -45, 1, 0);
                     Position = UDim2.new(0, 5, 0, 0);
                     BackgroundTransparency = 1;
+                    TextXAlignment = Enum.TextXAlignment.Left;
                     Font = Enum.Font.Code;
                     TextSize = Options.titlesize;
                     Font = Options.titlefont;
@@ -441,6 +442,26 @@ local Defaults; do
                 return nil;
             end
 
+            local function GetBindingFromInputObject(InputObject)
+                if typeof(InputObject) ~= "InputObject" then
+                    return nil;
+                end
+
+                if InputObject.UserInputType == Enum.UserInputType.Keyboard then
+                    local KeyCode = InputObject.KeyCode;
+                    if KeyCode and KeyCode ~= Enum.KeyCode.Unknown and (not Banned[KeyCode.Name]) then
+                        return KeyCode;
+                    end
+                    return nil;
+                end
+
+                if (not KeyboardOnly) and Allowed[InputObject.UserInputType.Name] then
+                    return InputObject.UserInputType;
+                end
+
+                return nil;
+            end
+
             local function NormalizeBinding(Value)
                 if Value == nil then
                     return nil;
@@ -448,18 +469,7 @@ local Defaults; do
 
                 local ValueType = typeof(Value);
                 if ValueType == "InputObject" then
-                    if Value.UserInputType == Enum.UserInputType.Keyboard then
-                        local KeyCode = Value.KeyCode;
-                        if KeyCode and KeyCode ~= Enum.KeyCode.Unknown and (not Banned[KeyCode.Name]) then
-                            return KeyCode;
-                        end
-                        return nil;
-                    end
-
-                    if (not KeyboardOnly) and Allowed[Value.UserInputType.Name] then
-                        return Value.UserInputType;
-                    end
-                    return nil;
+                    return GetBindingFromInputObject(Value);
                 end
 
                 if ValueType == "EnumItem" then
@@ -561,11 +571,23 @@ local Defaults; do
 
                 local Ok, ErrorData = pcall(function()
                     ButtonData.Text = "..."
-                    local InputObject = UserInputService.InputBegan:Wait();
-                    local Normalized = NormalizeBinding(InputObject);
+                    while Library.Binding do
+                        local InputObject = UserInputService.InputBegan:Wait();
+                        if InputObject.UserInputType == Enum.UserInputType.Keyboard then
+                            if InputObject.KeyCode == Enum.KeyCode.Escape then
+                                break;
+                            end
+                            if InputObject.KeyCode == Enum.KeyCode.Backspace or InputObject.KeyCode == Enum.KeyCode.Delete then
+                                Location[Flag] = nil;
+                                break;
+                            end
+                        end
 
-                    if Normalized then
-                        Location[Flag] = Normalized;
+                        local Normalized = GetBindingFromInputObject(InputObject);
+                        if Normalized then
+                            Location[Flag] = Normalized;
+                            break;
+                        end
                     end
                 end);
 
