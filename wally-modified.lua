@@ -18,7 +18,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.22",
+    Build = "2026-03-05.23",
     BindDebug = false
 };
 local Defaults; do
@@ -1047,8 +1047,8 @@ local Defaults; do
 
             local PickerSize = math.clamp(tonumber(Options.size) or 90, 70, 130);
             local WheelImage = Options.wheelImage or "rbxassetid://6020299385";
-            local WheelRadiusScale = math.clamp(tonumber(Options.wheelRadiusScale) or 0.97, 0.6, 1);
-            local WheelOutsidePadding = math.max(0, tonumber(Options.wheelOutsidePadding) or 2);
+            local WheelRadiusScale = math.clamp(tonumber(Options.wheelRadiusScale) or 1, 0.6, 1);
+            local WheelOutsidePadding = math.max(0, tonumber(Options.wheelOutsidePadding) or 0);
             local WheelTop = 6;
             local ShadeTop = WheelTop + PickerSize + 6;
             local AlphaTop = ShadeTop + 20;
@@ -1271,15 +1271,12 @@ local Defaults; do
                 });
             });
 
-            local ModalBlocker = Library:Create('TextButton', {
+            local ModalBlocker = Library:Create('Frame', {
                 Name = 'ColorPickerModalBlocker';
                 Visible = false;
-                Text = "";
-                AutoButtonColor = false;
                 BackgroundTransparency = 1;
                 BorderSizePixel = 0;
                 Active = true;
-                Selectable = false;
                 Size = UDim2.new(1, 0, 1, 0);
                 Position = UDim2.new(0, 0, 0, 0);
                 ZIndex = 39;
@@ -1714,9 +1711,12 @@ local Defaults; do
                 BeginWheelDrag(Input);
             end);
 
-            ModalBlocker.Activated:Connect(function()
-                if PopupOpen then
-                    SetPopupVisible(false, false);
+            ModalBlocker.InputBegan:Connect(function(Input)
+                if PopupOpen and IsPointerInput(Input) then
+                    local PointerPos = GetPointerPosition(Input);
+                    if (not IsPointInsideGui(PopupData, PointerPos)) and (not IsPointInsideGui(Preview, PointerPos)) then
+                        SetPopupVisible(false, false);
+                    end
                 end
             end);
 
