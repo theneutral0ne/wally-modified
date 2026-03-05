@@ -407,10 +407,6 @@ local Defaults; do
             local Callback     = Callback or function() end;
             local Default      = Options.default;
 
-            if Default and ((not KeyboardOnly) or (not tostring(Default):find('MouseButton'))) then
-                Location[Flag] = Default
-            end
-            
             local Banned = {
                 Return = true;
                 Space = true;
@@ -432,9 +428,62 @@ local Defaults; do
                 MouseButton2 = true;
             }      
 
+            local function NormalizeBinding(Value)
+                if Value == nil then
+                    return nil;
+                end
+
+                local ValueType = typeof(Value);
+                if ValueType == "InputObject" then
+                    if Value.UserInputType == Enum.UserInputType.Keyboard then
+                        local KeyCode = Value.KeyCode;
+                        if KeyCode and KeyCode ~= Enum.KeyCode.Unknown and (not Banned[KeyCode.Name]) then
+                            return KeyCode;
+                        end
+                        return nil;
+                    end
+
+                    if (not KeyboardOnly) and Allowed[Value.UserInputType.Name] then
+                        return Value.UserInputType;
+                    end
+                    return nil;
+                end
+
+                if ValueType == "EnumItem" then
+                    if Value.EnumType == Enum.KeyCode then
+                        return (not Banned[Value.Name]) and Value or nil;
+                    end
+                    if Value.EnumType == Enum.UserInputType then
+                        return ((not KeyboardOnly) and Allowed[Value.Name]) and Value or nil;
+                    end
+                    return nil;
+                end
+
+                local Text = tostring(Value);
+                if type(Text) == "string" then
+                    Text = Text:gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", "");
+                    local ParsedKeyCode = Enum.KeyCode[Text];
+                    if ParsedKeyCode and (not Banned[ParsedKeyCode.Name]) then
+                        return ParsedKeyCode;
+                    end
+
+                    local ParsedInputType = Enum.UserInputType[Text];
+                    if ParsedInputType and (not KeyboardOnly) and Allowed[ParsedInputType.Name] then
+                        return ParsedInputType;
+                    end
+                end
+
+                return nil;
+            end
+
             local function GetInputName(Value)
                 if Value == nil then
                     return "None";
+                end
+
+                local Normalized = NormalizeBinding(Value);
+                if Normalized then
+                    return ShortNames[Normalized.Name] or Normalized.Name;
                 end
 
                 local ValueType = typeof(Value);
@@ -451,7 +500,12 @@ local Defaults; do
                 return ShortNames[Text] or Text;
             end
 
-            local DisplayName = GetInputName(Default);
+            local NormalizedDefault = NormalizeBinding(Default);
+            if NormalizedDefault then
+                Location[Flag] = NormalizedDefault;
+            end
+
+            local DisplayName = GetInputName(Location[Flag]);
             local CheckData = Library:Create('Frame', {
                 BackgroundTransparency = 1;
                 Size = UDim2.new(1, 0, 0, 30);
@@ -494,24 +548,22 @@ local Defaults; do
 
                 ButtonData.Text = "..."
                 local InputObject = UserInputService.InputBegan:Wait();
+                local Normalized = NormalizeBinding(InputObject);
 
-                if (InputObject.UserInputType ~= Enum.UserInputType.Keyboard and (Allowed[InputObject.UserInputType.Name]) and (not KeyboardOnly)) or (InputObject.KeyCode and (not Banned[InputObject.KeyCode.Name])) then
-                    Location[Flag] = (InputObject);
-                    ButtonData.Text = GetInputName(InputObject);
-                    
-                else
-                    if (Location[Flag]) then
-                        ButtonData.Text = GetInputName(Location[Flag]);
-                    end
+                if Normalized then
+                    Location[Flag] = Normalized;
                 end
+
+                ButtonData.Text = GetInputName(Location[Flag]);
 
                 task.wait(0.1)
                 Library.Binding = false;
             end)
             
             if Location[Flag] then
-                ButtonData.Text = GetInputName(Location[Flag]);
+                Location[Flag] = NormalizeBinding(Location[Flag]);
             end
+            ButtonData.Text = GetInputName(Location[Flag]);
 
             Library.Binds[Flag] = {
                 Location = Location;
@@ -1897,30 +1949,37 @@ local Defaults; do
         end
     end)
 
-    local function IsReallyPressed(Bind, Inp)
-        local Key = Bind;
-        local KeyType = typeof(Key);
-
+    local function NormalizeRuntimeBind(Bind)
+        local KeyType = typeof(Bind);
         if KeyType == "InputObject" then
-            if Key.UserInputType == Enum.UserInputType.Keyboard then
-                return Inp.KeyCode == Key.KeyCode;
+            if Bind.UserInputType == Enum.UserInputType.Keyboard then
+                return Bind.KeyCode;
             end
-            return Inp.UserInputType == Key.UserInputType;
+            return Bind.UserInputType;
         end
 
         if KeyType == "EnumItem" then
-            local KeyString = tostring(Key);
-            if KeyString:find("MouseButton") then
-                return Inp.UserInputType == Key;
+            if Bind.EnumType == Enum.KeyCode or Bind.EnumType == Enum.UserInputType then
+                return Bind;
             end
-            return Inp.KeyCode == Key;
+            return nil;
         end
 
-        local KeyString = tostring(Key);
-        if KeyString:find("MouseButton") then
-            return KeyString == tostring(Inp.UserInputType.Name);
+        local KeyString = tostring(Bind):gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", "");
+        return Enum.KeyCode[KeyString] or Enum.UserInputType[KeyString];
+    end
+
+    local function IsReallyPressed(Bind, Inp)
+        local NormalizedBind = NormalizeRuntimeBind(Bind);
+        if not NormalizedBind then
+            return false;
         end
-        return KeyString == tostring(Inp.KeyCode.Name);
+
+        if NormalizedBind.EnumType == Enum.UserInputType then
+            return Inp.UserInputType == NormalizedBind;
+        end
+
+        return Inp.KeyCode == NormalizedBind;
     end
 
     UserInputService.InputBegan:Connect(function(Input,Gpe)
