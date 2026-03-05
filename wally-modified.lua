@@ -3,8 +3,9 @@ local RunService = game:GetService("RunService");
 local Debris = game:GetService("Debris");
 local CoreGui = game:GetService("CoreGui");
 local HttpService = game:GetService("HttpService");
+local TextService = game:GetService("TextService");
 
-local Library = {Count = 0, Queue = {}, Callbacks = {}, RainbowTable = {}, Toggled = true, Binds = {}, Build = "2026-03-05.9", BindDebug = false};
+local Library = {Count = 0, Queue = {}, Callbacks = {}, RainbowTable = {}, Toggled = true, Binds = {}, Build = "2026-03-05.10", BindDebug = false};
 local Defaults; do
     local Dragger = {}; do
         function Dragger.New(Frame)
@@ -61,6 +62,17 @@ local Defaults; do
                 end
             end
         end)
+    end
+
+    local function ResolveGuiParent()
+        local ParentGui = CoreGui;
+        if type(gethui) == "function" then
+            local Ok, Gui = pcall(gethui);
+            if Ok and Gui then
+                ParentGui = Gui;
+            end
+        end
+        return ParentGui;
     end
     
 	    local Types = {}; do
@@ -2447,6 +2459,271 @@ local Defaults; do
         return Obj
     end
 
+    function Library:EnsureNotificationContainer()
+        if self.NotificationContainer and self.NotificationContainer.Parent then
+            return self.NotificationContainer;
+        end
+
+        local ParentGui = ResolveGuiParent();
+        if (not self.NotificationGui) or (not self.NotificationGui.Parent) then
+            self.NotificationGui = self:Create("ScreenGui", {
+                Name = "WallyModifiedNotifications";
+                ResetOnSpawn = false;
+                IgnoreGuiInset = true;
+                ZIndexBehavior = Enum.ZIndexBehavior.Sibling;
+                DisplayOrder = 999;
+                Parent = ParentGui;
+            });
+        end
+
+        local Container = self.NotificationGui:FindFirstChild("Container");
+        if not Container then
+            local Width = math.clamp(math.floor((tonumber(self.Options and self.Options.notifywidth) or 280) + 0.5), 180, 460);
+            local Padding = math.clamp(math.floor((tonumber(self.Options and self.Options.notifypadding) or 6) + 0.5), 0, 30);
+
+            Container = self:Create("Frame", {
+                Name = "Container";
+                AnchorPoint = Vector2.new(1, 0);
+                Position = UDim2.new(1, -10, 0, 10);
+                Size = UDim2.new(0, Width + 18, 1, -20);
+                BackgroundTransparency = 1;
+                BorderSizePixel = 0;
+                Parent = self.NotificationGui;
+                Library:Create("UIListLayout", {
+                    Name = "List";
+                    SortOrder = Enum.SortOrder.LayoutOrder;
+                    HorizontalAlignment = Enum.HorizontalAlignment.Right;
+                    VerticalAlignment = Enum.VerticalAlignment.Top;
+                    Padding = UDim.new(0, Padding);
+                });
+            });
+        end
+
+        self.NotificationContainer = Container;
+        self.NotificationList = Container:FindFirstChild("List");
+        self.Notifications = self.Notifications or {};
+        self.NotificationId = self.NotificationId or 0;
+        return Container;
+    end
+
+    function Library:Notify(Title, Text, Duration, Options)
+        local Config = {};
+        if type(Title) == "table" then
+            for Key, Value in next, Title do
+                Config[Key] = Value;
+            end
+        elseif type(Text) == "table" and Options == nil then
+            for Key, Value in next, Text do
+                Config[Key] = Value;
+            end
+            Config.text = Title;
+        else
+            Config.title = Title;
+            Config.text = Text;
+            Config.duration = Duration;
+            if type(Options) == "table" then
+                for Key, Value in next, Options do
+                    Config[Key] = Value;
+                end
+            end
+        end
+
+        if Config.text == nil then
+            Config.text = Config.title;
+            Config.title = "Notification";
+        end
+
+        local TitleText = tostring(Config.title or "Notification");
+        local MessageText = tostring(Config.text or "");
+
+        local Width = math.clamp(math.floor((tonumber(Config.width or Config.size or (self.Options and self.Options.notifywidth) or 280) or 280) + 0.5), 180, 460);
+        local Padding = math.clamp(math.floor((tonumber(Config.padding or (self.Options and self.Options.notifypadding) or 6) or 6) + 0.5), 0, 30);
+        local MaxNotifications = math.clamp(
+            math.floor((tonumber(Config.maxNotifications or Config.maxnotifications or (self.Options and self.Options.notifymax) or 6) or 6) + 0.5),
+            1,
+            30
+        );
+
+        local DurationValue = tonumber(Config.duration);
+        local Sticky = (DurationValue ~= nil and DurationValue <= 0);
+        local Lifetime = math.clamp(DurationValue or tonumber(self.Options and self.Options.notifyduration) or 4, 0.2, 300);
+
+        local FontData = Config.font or (self.Options and self.Options.font) or Enum.Font.SourceSans;
+        local TitleSize = math.clamp(math.floor((tonumber(Config.titleSize or (self.Options and self.Options.fontsize) or 17) or 17) + 0.5), 10, 40);
+        local BodySize = math.clamp(math.floor((tonumber(Config.textSize or (TitleSize - 1)) or (TitleSize - 1)) + 0.5), 9, 36);
+
+        local NotifyBackground = Config.backgroundColor or Config.bgColor or (self.Options and self.Options.notifybgcolor) or Color3.fromRGB(28, 28, 28);
+        local NotifyBorder = Config.borderColor or (self.Options and self.Options.notifybordercolor) or Color3.fromRGB(62, 62, 62);
+        local NotifyAccent = Config.accentColor or (self.Options and self.Options.notifyaccentcolor) or (self.Options and self.Options.underlinecolor) or Color3.fromRGB(0, 255, 140);
+        local NotifyTitleColor = Config.titleColor or (self.Options and self.Options.notifytitlecolor) or (self.Options and self.Options.titletextcolor) or Color3.fromRGB(255, 255, 255);
+        local NotifyTextColor = Config.textColor or (self.Options and self.Options.notifytextcolor) or (self.Options and self.Options.textcolor) or Color3.fromRGB(230, 230, 230);
+
+        if NotifyAccent == "rainbow" then
+            NotifyAccent = Color3.fromHSV((os.clock() * 0.15) % 1, 1, 1);
+        end
+
+        local Container = self:EnsureNotificationContainer();
+        if not Container then
+            return nil;
+        end
+
+        local List = self.NotificationList;
+        if List then
+            List.Padding = UDim.new(0, Padding);
+        end
+        Container.Size = UDim2.new(0, Width + 18, 1, -20);
+
+        local MessageBounds = Vector2.new(0, BodySize);
+        local OkTextSize, Bounds = pcall(function()
+            return TextService:GetTextSize(MessageText, BodySize, FontData, Vector2.new(Width - 18, 1000));
+        end);
+        if OkTextSize and typeof(Bounds) == "Vector2" then
+            MessageBounds = Bounds;
+        end
+
+        local DesiredHeight = math.clamp(24 + MessageBounds.Y + 10, 44, 220);
+        if MessageText == "" then
+            DesiredHeight = 36;
+        end
+
+        self.NotificationId = (self.NotificationId or 0) + 1;
+        local Notification = self:Create("Frame", {
+            Name = "Notification_" .. tostring(self.NotificationId);
+            Size = UDim2.new(0, Width, 0, 0);
+            BackgroundColor3 = NotifyBackground;
+            BorderColor3 = NotifyBorder;
+            ClipsDescendants = true;
+            Parent = Container;
+            LayoutOrder = self.NotificationId;
+            ZIndex = 30;
+            Library:Create("UICorner", {
+                CornerRadius = UDim.new(0, math.clamp(math.floor((tonumber(Config.cornerRadius or 4) or 4) + 0.5), 0, 14));
+            });
+            Library:Create("Frame", {
+                Name = "Accent";
+                Size = UDim2.new(0, 3, 1, 0);
+                BorderSizePixel = 0;
+                BackgroundColor3 = NotifyAccent;
+                ZIndex = 31;
+            });
+            Library:Create("TextLabel", {
+                Name = "Title";
+                BackgroundTransparency = 1;
+                Position = UDim2.new(0, 8, 0, 3);
+                Size = UDim2.new(1, -30, 0, 17);
+                Text = TitleText;
+                TextXAlignment = Enum.TextXAlignment.Left;
+                TextYAlignment = Enum.TextYAlignment.Center;
+                Font = FontData;
+                TextSize = TitleSize;
+                TextScaled = false;
+                TextColor3 = NotifyTitleColor;
+                TextStrokeTransparency = self.Options and self.Options.textstroke or 1;
+                TextStrokeColor3 = self.Options and self.Options.strokecolor or Color3.fromRGB(0, 0, 0);
+                ZIndex = 31;
+            });
+            Library:Create("TextButton", {
+                Name = "Close";
+                BackgroundTransparency = 1;
+                Position = UDim2.new(1, -21, 0, 2);
+                Size = UDim2.new(0, 18, 0, 18);
+                Text = "x";
+                Font = FontData;
+                TextSize = TitleSize;
+                TextScaled = false;
+                TextColor3 = NotifyTitleColor;
+                TextStrokeTransparency = self.Options and self.Options.textstroke or 1;
+                TextStrokeColor3 = self.Options and self.Options.strokecolor or Color3.fromRGB(0, 0, 0);
+                ZIndex = 31;
+            });
+            Library:Create("TextLabel", {
+                Name = "Body";
+                BackgroundTransparency = 1;
+                Position = UDim2.new(0, 8, 0, 21);
+                Size = UDim2.new(1, -16, 1, -23);
+                Text = MessageText;
+                TextWrapped = true;
+                TextXAlignment = Enum.TextXAlignment.Left;
+                TextYAlignment = Enum.TextYAlignment.Top;
+                Font = FontData;
+                TextSize = BodySize;
+                TextScaled = false;
+                TextColor3 = NotifyTextColor;
+                TextStrokeTransparency = self.Options and self.Options.textstroke or 1;
+                TextStrokeColor3 = self.Options and self.Options.strokecolor or Color3.fromRGB(0, 0, 0);
+                ZIndex = 31;
+            });
+        });
+
+        table.insert(self.Notifications, Notification);
+        while #self.Notifications > MaxNotifications do
+            local Oldest = table.remove(self.Notifications, 1);
+            if Oldest and Oldest.Parent then
+                Oldest:Destroy();
+            end
+        end
+
+        local Closed = false;
+        local function RemoveNotification(Instant)
+            if Closed then
+                return;
+            end
+            Closed = true;
+
+            for Index = #self.Notifications, 1, -1 do
+                if self.Notifications[Index] == Notification then
+                    table.remove(self.Notifications, Index);
+                    break;
+                end
+            end
+
+            if Notification and Notification.Parent then
+                if Instant then
+                    Notification:Destroy();
+                else
+                    Notification:TweenSize(UDim2.new(0, Width, 0, 0), "In", "Quint", .16, true);
+                    task.delay(0.17, function()
+                        if Notification and Notification.Parent then
+                            Notification:Destroy();
+                        end
+                    end);
+                end
+            end
+        end
+
+        local CloseButton = Notification:FindFirstChild("Close");
+        if CloseButton then
+            CloseButton.MouseButton1Click:Connect(function()
+                RemoveNotification(false);
+            end);
+        end
+
+        Notification:TweenSize(UDim2.new(0, Width, 0, DesiredHeight), "Out", "Quint", .18, true);
+
+        if not Sticky then
+            task.delay(Lifetime, function()
+                RemoveNotification(false);
+            end);
+        end
+
+        return {
+            Close = function(_, Instant)
+                RemoveNotification(Instant == true);
+            end;
+            Destroy = function(_, Instant)
+                RemoveNotification(Instant == true);
+            end;
+        };
+    end
+
+    function Library:CreateNotification(...)
+        return self:Notify(...);
+    end
+
+    function Library:Notification(...)
+        return self:Notify(...);
+    end
+
     function Library:CreatePresetManager(ScriptKeyOrOptions, MaybeOptions)
         -- Supported usage:
         -- Library:CreatePresetManager("MyScriptKey", {location = Flags})
@@ -2986,27 +3263,31 @@ local Defaults; do
 
         strokecolor    = Color3.fromRGB(0, 0, 0);
 
-        textcolor      = Color3.fromRGB(255, 255, 255);
-        titletextcolor = Color3.fromRGB(255, 255, 255);
+	        textcolor      = Color3.fromRGB(255, 255, 255);
+	        titletextcolor = Color3.fromRGB(255, 255, 255);
 
 	        autoscaletext = true;
 	        mintextsize = 10;
 	        itemspacing = 0;
+
+	        notifybgcolor = Color3.fromRGB(28, 28, 28);
+	        notifybordercolor = Color3.fromRGB(62, 62, 62);
+	        notifyaccentcolor = Color3.fromRGB(0, 255, 140);
+	        notifytitlecolor = Color3.fromRGB(255, 255, 255);
+	        notifytextcolor = Color3.fromRGB(230, 230, 230);
+	        notifywidth = 280;
+	        notifyduration = 4;
+	        notifymax = 6;
+	        notifypadding = 6;
 
 	        placeholdercolor = Color3.fromRGB(255, 255, 255);
 	        titlestrokecolor = Color3.fromRGB(0, 0, 0);
 	    }
 	
     function Library:CreateWindow(Name, Options)
-		
+			
         if (not Library.Container) then
-            local ParentGui = CoreGui;
-            if type(gethui) == "function" then
-                local Ok, Gui = pcall(gethui);
-                if Ok and Gui then
-                    ParentGui = Gui;
-                end
-            end
+            local ParentGui = ResolveGuiParent();
             Library.Container = self:Create("ScreenGui", {
                 self:Create('Frame', {
                     Name = 'Container';
