@@ -1,8 +1,7 @@
 -- Wally Modified: Practical Full Example (Two Windows)
--- Roblox-only showcase of every control + runtime API.
+-- Showcase of every control + runtime API.
 
 local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -493,7 +492,7 @@ UtilityWindow:Button("Box Return Demo (Set JumpPower TextBox)", function()
     StateLabel:Refresh("State: JumpPower set through Box return object")
 end)
 
-Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
     CleanupRemovedPlayers()
 end)
 
