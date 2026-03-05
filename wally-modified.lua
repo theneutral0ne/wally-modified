@@ -2,8 +2,9 @@ local UserInputService = game:GetService("UserInputService");
 local RunService = game:GetService("RunService");
 local Debris = game:GetService("Debris");
 local CoreGui = game:GetService("CoreGui");
+local HttpService = game:GetService("HttpService");
 
-local Library = {Count = 0, Queue = {}, Callbacks = {}, RainbowTable = {}, Toggled = true, Binds = {}, Build = "2026-03-05.6", BindDebug = false};
+local Library = {Count = 0, Queue = {}, Callbacks = {}, RainbowTable = {}, Toggled = true, Binds = {}, Build = "2026-03-05.8", BindDebug = false};
 local Defaults; do
     local Dragger = {}; do
         function Dragger.New(Frame)
@@ -718,13 +719,48 @@ local Defaults; do
             end
             ButtonData.Text = GetInputName(Location[Flag]);
 
-            Library.Binds[Flag] = {
-                Location = Location;
-                Callback = Callback;
-            };
+	            Library.Binds[Flag] = {
+	                Location = Location;
+	                Callback = Callback;
+	            };
 
-            self:Resize();
-        end
+	            self:Resize();
+
+	            local ApiData = {};
+
+	            function ApiData:Set(NewBinding, FireCallback)
+	                local Normalized = NormalizeBinding(NewBinding);
+	                if NewBinding ~= nil and (not Normalized) then
+	                    return false, "invalid binding";
+	                end
+
+	                Location[Flag] = Normalized;
+	                ButtonData.Text = GetInputName(Location[Flag]);
+
+	                if FireCallback == true then
+	                    Callback(Location[Flag]);
+	                end
+
+	                return true, Location[Flag];
+	            end
+
+	            function ApiData:Clear(FireCallback)
+	                Location[Flag] = nil;
+	                ButtonData.Text = GetInputName(Location[Flag]);
+
+	                if FireCallback == true then
+	                    Callback(Location[Flag]);
+	                end
+
+	                return true;
+	            end
+
+	            function ApiData:Get()
+	                return Location[Flag];
+	            end
+
+	            return ApiData;
+	        end
     
         function Types:Section(Name)
             local OrderData = self:GetOrder();
@@ -2403,6 +2439,522 @@ local Defaults; do
         
         Obj.Parent = Data.Parent;
         return Obj
+    end
+
+    function Library:CreatePresetManager(ScriptKeyOrOptions, MaybeOptions)
+        -- Supported usage:
+        -- Library:CreatePresetManager("MyScriptKey", {location = Flags})
+        -- Library:CreatePresetManager({scriptKey = "MyScriptKey", location = Flags})
+        local Options = {};
+        if type(ScriptKeyOrOptions) == "string" then
+            if type(MaybeOptions) == "table" then
+                for Key, Value in next, MaybeOptions do
+                    Options[Key] = Value;
+                end
+            end
+            Options.scriptKey = ScriptKeyOrOptions;
+        elseif type(ScriptKeyOrOptions) == "table" then
+            for Key, Value in next, ScriptKeyOrOptions do
+                Options[Key] = Value;
+            end
+        elseif type(MaybeOptions) == "table" then
+            for Key, Value in next, MaybeOptions do
+                Options[Key] = Value;
+            end
+        end
+
+        local Location = (type(Options.location) == "table" and Options.location) or {};
+        local RootFolder = tostring(Options.rootFolder or "WallyModifiedPresets");
+        local Extension = tostring(Options.extension or ".json");
+        local ClearOnLoad = (Options.clearOnLoad ~= false);
+        local SeparateByPlace = (Options.separateByPlace ~= false);
+
+        if Extension ~= "" and string.sub(Extension, 1, 1) ~= "." then
+            Extension = "." .. Extension;
+        end
+
+        local FileApi = {
+            IsFolder = (type(isfolder) == "function" and isfolder) or nil;
+            MakeFolder = (type(makefolder) == "function" and makefolder) or nil;
+            IsFile = (type(isfile) == "function" and isfile) or nil;
+            ReadFile = (type(readfile) == "function" and readfile) or nil;
+            WriteFile = (type(writefile) == "function" and writefile) or nil;
+            ListFiles = (type(listfiles) == "function" and listfiles) or nil;
+            Delfile = (type(delfile) == "function" and delfile) or nil;
+        };
+
+        local function HasRequiredFileApi()
+            return FileApi.IsFolder and FileApi.MakeFolder and FileApi.IsFile and FileApi.ReadFile and FileApi.WriteFile;
+        end
+
+        local function SanitizeName(Name, Fallback)
+            local Value = tostring(Name or Fallback or "Default");
+            Value = Value:gsub("[%c]", ""):gsub("[\\/:*?\"<>|]", "_");
+            Value = Value:gsub("%s+", "_");
+            Value = Value:gsub("_+", "_");
+            Value = Value:gsub("^_+", ""):gsub("_+$", "");
+            if Value == "" then
+                Value = tostring(Fallback or "Default");
+            end
+            if #Value > 80 then
+                Value = Value:sub(1, 80);
+            end
+            return Value;
+        end
+
+        local function HashText(Text)
+            local Hash = 5381;
+            for Index = 1, #Text do
+                Hash = ((Hash * 33) + string.byte(Text, Index)) % 2147483647;
+            end
+            return tostring(Hash);
+        end
+
+        local function GetCallerDebugSource()
+            if not (debug and debug.info) then
+                return "";
+            end
+
+            for Level = 3, 12 do
+                local OkSource, Source = pcall(function()
+                    return debug.info(Level, "s");
+                end);
+
+                if OkSource and type(Source) == "string" and Source ~= "" then
+                    local Lower = string.lower(Source);
+                    if not string.find(Lower, "wally-modified.lua", 1, true) then
+                        return Source;
+                    end
+                end
+            end
+
+            return "";
+        end
+
+        local function GetCallerScriptName()
+            if type(getfenv) ~= "function" then
+                return "";
+            end
+
+            for Level = 3, 12 do
+                local OkEnv, Env = pcall(getfenv, Level);
+                if OkEnv and type(Env) == "table" then
+                    local ScriptObject = rawget(Env, "script");
+                    if typeof(ScriptObject) == "Instance" then
+                        local OkName, FullName = pcall(function()
+                            return ScriptObject:GetFullName();
+                        end);
+                        if OkName and type(FullName) == "string" and FullName ~= "" then
+                            return FullName;
+                        end
+
+                        local NameData = tostring(ScriptObject.Name or "");
+                        if NameData ~= "" then
+                            return NameData;
+                        end
+                    end
+                end
+            end
+
+            return "";
+        end
+
+        local function GetAutoScriptKey()
+            local ScriptName = GetCallerScriptName();
+            local Source = GetCallerDebugSource();
+
+            local Identity = ScriptName;
+            if Identity == "" then
+                Identity = Source;
+            end
+            if Identity == "" then
+                Identity = "UnknownScript";
+            end
+
+            local HashSeed = Identity;
+            if SeparateByPlace then
+                HashSeed = HashSeed .. "|PlaceId:" .. tostring(game.PlaceId or 0);
+            end
+
+            local SourceHash = HashText(HashSeed);
+            return SanitizeName(Identity, "Script") .. "_" .. SourceHash;
+        end
+
+        local ScriptKey = SanitizeName(Options.scriptKey or Options.scriptId or GetAutoScriptKey(), "Script");
+
+        local function GetScriptFolder()
+            return RootFolder .. "/" .. ScriptKey;
+        end
+
+        local function EnsureFolderTree()
+            if not HasRequiredFileApi() then
+                return false, "writefile/readfile APIs are not available in this executor";
+            end
+
+            local OkRoot, RootExists = pcall(FileApi.IsFolder, RootFolder);
+            if (not OkRoot) or (not RootExists) then
+                local OkMakeRoot = pcall(FileApi.MakeFolder, RootFolder);
+                if not OkMakeRoot then
+                    return false, "failed to create root preset folder";
+                end
+            end
+
+            local ScriptFolder = GetScriptFolder();
+            local OkScript, ScriptExists = pcall(FileApi.IsFolder, ScriptFolder);
+            if (not OkScript) or (not ScriptExists) then
+                local OkMakeScript = pcall(FileApi.MakeFolder, ScriptFolder);
+                if not OkMakeScript then
+                    return false, "failed to create script preset folder";
+                end
+            end
+
+            return true;
+        end
+
+        local function GetPresetPath(PresetName)
+            local SafeName = SanitizeName(PresetName, "Default");
+            return GetScriptFolder() .. "/" .. SafeName .. Extension, SafeName;
+        end
+
+        local function GetEnumTypeFromString(EnumTypeName)
+            if type(EnumTypeName) ~= "string" or EnumTypeName == "" then
+                return nil;
+            end
+
+            local Trimmed = EnumTypeName:gsub("^Enum%.", "");
+            local OkEnum, EnumType = pcall(function()
+                return Enum[Trimmed];
+            end);
+            if OkEnum and EnumType then
+                return EnumType;
+            end
+            return nil;
+        end
+
+        local function GetEnumItemByName(EnumType, ItemName)
+            if not EnumType or type(ItemName) ~= "string" then
+                return nil;
+            end
+
+            for _, EnumItem in next, EnumType:GetEnumItems() do
+                if EnumItem.Name == ItemName then
+                    return EnumItem;
+                end
+            end
+            return nil;
+        end
+
+        local function SerializeValue(Value, Depth)
+            Depth = Depth or 0;
+            if Depth > 64 then
+                return nil;
+            end
+
+            local ValueType = typeof(Value);
+            if ValueType == "nil" then
+                return nil;
+            end
+
+            if ValueType == "boolean" or ValueType == "number" or ValueType == "string" then
+                return Value;
+            end
+
+            if ValueType == "Color3" then
+                return {
+                    __wallyType = "Color3";
+                    r = Value.R;
+                    g = Value.G;
+                    b = Value.B;
+                };
+            end
+
+            if ValueType == "EnumItem" then
+                return {
+                    __wallyType = "EnumItem";
+                    enumType = tostring(Value.EnumType);
+                    name = Value.Name;
+                };
+            end
+
+            if ValueType == "table" then
+                local Output = {};
+                for Key, SubValue in next, Value do
+                    local KeyType = typeof(Key);
+                    local OutputKey = Key;
+                    if KeyType ~= "string" and KeyType ~= "number" then
+                        OutputKey = tostring(Key);
+                    end
+                    Output[OutputKey] = SerializeValue(SubValue, Depth + 1);
+                end
+                return Output;
+            end
+
+            return tostring(Value);
+        end
+
+        local function DeserializeValue(Value, Depth)
+            Depth = Depth or 0;
+            if Depth > 64 then
+                return nil;
+            end
+
+            if type(Value) ~= "table" then
+                return Value;
+            end
+
+            if Value.__wallyType == "Color3" then
+                return Color3.new(
+                    tonumber(Value.r) or 0,
+                    tonumber(Value.g) or 0,
+                    tonumber(Value.b) or 0
+                );
+            end
+
+            if Value.__wallyType == "EnumItem" then
+                local EnumType = GetEnumTypeFromString(Value.enumType);
+                local EnumItem = GetEnumItemByName(EnumType, Value.name);
+                if EnumItem then
+                    return EnumItem;
+                end
+                return nil;
+            end
+
+            local Output = {};
+            for Key, SubValue in next, Value do
+                if Key ~= "__wallyType" then
+                    Output[Key] = DeserializeValue(SubValue, Depth + 1);
+                end
+            end
+            return Output;
+        end
+
+        local function ClearTable(TableData)
+            for Key in next, TableData do
+                TableData[Key] = nil;
+            end
+        end
+
+        local function MergeInto(Target, Source, ShouldClear)
+            if type(Target) ~= "table" or type(Source) ~= "table" then
+                return;
+            end
+
+            if ShouldClear then
+                ClearTable(Target);
+            end
+
+            for Key, Value in next, Source do
+                Target[Key] = Value;
+            end
+        end
+
+        local function ReadPresetData(PresetName)
+            local OkFolder, FolderError = EnsureFolderTree();
+            if not OkFolder then
+                return false, FolderError;
+            end
+
+            local Path = GetPresetPath(PresetName);
+            local OkFile, Exists = pcall(FileApi.IsFile, Path);
+            if (not OkFile) or (not Exists) then
+                return false, "preset file not found";
+            end
+
+            local OkRead, Content = pcall(FileApi.ReadFile, Path);
+            if not OkRead then
+                return false, "failed to read preset file";
+            end
+
+            local OkDecode, Decoded = pcall(function()
+                return HttpService:JSONDecode(Content);
+            end);
+            if not OkDecode then
+                return false, "failed to decode preset json";
+            end
+
+            local Data = DeserializeValue(Decoded);
+            if type(Data) ~= "table" then
+                return false, "preset data is invalid";
+            end
+
+            return true, Data;
+        end
+
+        local Manager = {};
+
+        function Manager:IsAvailable()
+            return HasRequiredFileApi();
+        end
+
+        function Manager:GetScriptKey()
+            return ScriptKey;
+        end
+
+        function Manager:GetFolder()
+            return GetScriptFolder();
+        end
+
+        function Manager:GetRootFolder()
+            return RootFolder;
+        end
+
+        function Manager:GetExtension()
+            return Extension;
+        end
+
+        function Manager:GetLocation()
+            return Location;
+        end
+
+        function Manager:SetLocation(NewLocation)
+            if type(NewLocation) ~= "table" then
+                return false, "location must be a table";
+            end
+            Location = NewLocation;
+            return true;
+        end
+
+        function Manager:SetScriptKey(NewKey)
+            ScriptKey = SanitizeName(NewKey, "Script");
+            local OkFolder, FolderError = EnsureFolderTree();
+            if not OkFolder then
+                return false, FolderError;
+            end
+            return true, ScriptKey;
+        end
+
+        function Manager:GetPresetPath(PresetName)
+            local Path, SafeName = GetPresetPath(PresetName);
+            return Path, SafeName;
+        end
+
+        function Manager:Save(PresetName, SourceLocation)
+            local OkFolder, FolderError = EnsureFolderTree();
+            if not OkFolder then
+                return false, FolderError;
+            end
+
+            local Source = (type(SourceLocation) == "table" and SourceLocation) or Location;
+            if type(Source) ~= "table" then
+                return false, "source location must be a table";
+            end
+
+            local Path, SafeName = GetPresetPath(PresetName);
+            local Encoded;
+            local OkEncode, EncodeError = pcall(function()
+                Encoded = HttpService:JSONEncode(SerializeValue(Source));
+            end);
+            if not OkEncode then
+                return false, "failed to encode preset: " .. tostring(EncodeError);
+            end
+
+            local OkWrite = pcall(FileApi.WriteFile, Path, Encoded);
+            if not OkWrite then
+                return false, "failed to write preset file";
+            end
+
+            return true, SafeName;
+        end
+
+        function Manager:Load(PresetName, TargetLocation, OverrideClearOnLoad)
+            local OkRead, DataOrError = ReadPresetData(PresetName);
+            if not OkRead then
+                return false, DataOrError;
+            end
+
+            local Target = (type(TargetLocation) == "table" and TargetLocation) or Location;
+            if type(Target) ~= "table" then
+                return false, "target location must be a table";
+            end
+
+            local ShouldClear = (OverrideClearOnLoad ~= nil and OverrideClearOnLoad) or (OverrideClearOnLoad == nil and ClearOnLoad);
+            MergeInto(Target, DataOrError, ShouldClear);
+            return true, DataOrError;
+        end
+
+        function Manager:LoadInto(PresetName, TargetLocation, OverrideClearOnLoad)
+            return self:Load(PresetName, TargetLocation, OverrideClearOnLoad);
+        end
+
+        function Manager:Exists(PresetName)
+            local OkFolder, FolderError = EnsureFolderTree();
+            if not OkFolder then
+                return false, FolderError;
+            end
+
+            local Path = GetPresetPath(PresetName);
+            local OkFile, Exists = pcall(FileApi.IsFile, Path);
+            if not OkFile then
+                return false, "failed to check preset file";
+            end
+
+            return Exists == true;
+        end
+
+        function Manager:Delete(PresetName)
+            local OkFolder, FolderError = EnsureFolderTree();
+            if not OkFolder then
+                return false, FolderError;
+            end
+
+            if not FileApi.Delfile then
+                return false, "delfile API is not available in this executor";
+            end
+
+            local Path = GetPresetPath(PresetName);
+            local OkFile, Exists = pcall(FileApi.IsFile, Path);
+            if (not OkFile) or (not Exists) then
+                return false, "preset file not found";
+            end
+
+            local OkDelete = pcall(FileApi.Delfile, Path);
+            if not OkDelete then
+                return false, "failed to delete preset file";
+            end
+
+            return true;
+        end
+
+        function Manager:List()
+            local OkFolder, FolderError = EnsureFolderTree();
+            if not OkFolder then
+                return {}, FolderError;
+            end
+
+            if not FileApi.ListFiles then
+                return {}, "listfiles API is not available in this executor";
+            end
+
+            local ScriptFolder = GetScriptFolder();
+            local OkList, Files = pcall(FileApi.ListFiles, ScriptFolder);
+            if not OkList or type(Files) ~= "table" then
+                return {}, "failed to list preset files";
+            end
+
+            local Names = {};
+            local LowerExt = string.lower(Extension);
+            local LowerExtLen = #LowerExt;
+            for _, FullPath in next, Files do
+                local FileName = tostring(FullPath):match("([^/\\]+)$") or tostring(FullPath);
+                local LowerName = string.lower(FileName);
+                if LowerExtLen == 0 or LowerName:sub(-LowerExtLen) == LowerExt then
+                    table.insert(Names, FileName:sub(1, #FileName - #Extension));
+                end
+            end
+
+            table.sort(Names, function(A, B)
+                return string.lower(A) < string.lower(B);
+            end);
+
+            return Names;
+        end
+
+        local OkFolder, FolderError = EnsureFolderTree();
+        if not OkFolder and Library.BindDebug then
+            warn("[Wally Modified][PresetManager] " .. tostring(FolderError));
+        end
+
+        return Manager;
     end
     
 	Defaults = {
