@@ -428,6 +428,21 @@ local Defaults; do
                 MouseButton2 = true;
             }      
 
+            local function GetEnumItemSafe(EnumType, Name)
+                if type(Name) ~= "string" or Name == "" then
+                    return nil;
+                end
+
+                local Ok, Item = pcall(function()
+                    return EnumType[Name];
+                end);
+
+                if Ok then
+                    return Item;
+                end
+                return nil;
+            end
+
             local function NormalizeBinding(Value)
                 if Value == nil then
                     return nil;
@@ -462,12 +477,12 @@ local Defaults; do
                 local Text = tostring(Value);
                 if type(Text) == "string" then
                     Text = Text:gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", "");
-                    local ParsedKeyCode = Enum.KeyCode[Text];
+                    local ParsedKeyCode = GetEnumItemSafe(Enum.KeyCode, Text);
                     if ParsedKeyCode and (not Banned[ParsedKeyCode.Name]) then
                         return ParsedKeyCode;
                     end
 
-                    local ParsedInputType = Enum.UserInputType[Text];
+                    local ParsedInputType = GetEnumItemSafe(Enum.UserInputType, Text);
                     if ParsedInputType and (not KeyboardOnly) and Allowed[ParsedInputType.Name] then
                         return ParsedInputType;
                     end
@@ -546,12 +561,18 @@ local Defaults; do
             ButtonData.MouseButton1Click:Connect(function()
                 Library.Binding = true
 
-                ButtonData.Text = "..."
-                local InputObject = UserInputService.InputBegan:Wait();
-                local Normalized = NormalizeBinding(InputObject);
+                local Ok, ErrorData = pcall(function()
+                    ButtonData.Text = "..."
+                    local InputObject = UserInputService.InputBegan:Wait();
+                    local Normalized = NormalizeBinding(InputObject);
 
-                if Normalized then
-                    Location[Flag] = Normalized;
+                    if Normalized then
+                        Location[Flag] = Normalized;
+                    end
+                end);
+
+                if not Ok then
+                    warn("[Wally Modified] Bind normalize failed: " .. tostring(ErrorData));
                 end
 
                 ButtonData.Text = GetInputName(Location[Flag]);
@@ -2318,6 +2339,21 @@ local Defaults; do
     end)
 
     local function NormalizeRuntimeBind(Bind)
+        local function GetEnumItemSafe(EnumType, Name)
+            if type(Name) ~= "string" or Name == "" then
+                return nil;
+            end
+
+            local Ok, Item = pcall(function()
+                return EnumType[Name];
+            end);
+
+            if Ok then
+                return Item;
+            end
+            return nil;
+        end
+
         local KeyType = typeof(Bind);
         if KeyType == "InputObject" then
             if Bind.UserInputType == Enum.UserInputType.Keyboard then
@@ -2334,7 +2370,12 @@ local Defaults; do
         end
 
         local KeyString = tostring(Bind):gsub("^Enum%.KeyCode%.", ""):gsub("^Enum%.UserInputType%.", "");
-        return Enum.KeyCode[KeyString] or Enum.UserInputType[KeyString];
+        local KeyCode = GetEnumItemSafe(Enum.KeyCode, KeyString);
+        if KeyCode then
+            return KeyCode;
+        end
+
+        return GetEnumItemSafe(Enum.UserInputType, KeyString);
     end
 
     local function IsReallyPressed(Bind, Inp)
