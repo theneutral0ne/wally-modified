@@ -4,6 +4,7 @@ local Debris = game:GetService("Debris");
 local CoreGui = game:GetService("CoreGui");
 local HttpService = game:GetService("HttpService");
 local TextService = game:GetService("TextService");
+local GuiService = game:GetService("GuiService");
 
 local Library = {
     Count = 0,
@@ -18,7 +19,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.26",
+    Build = "2026-03-05.27",
     BindDebug = false
 };
 local Defaults; do
@@ -1087,6 +1088,10 @@ local Defaults; do
             });
 
             local PopupParent = (Library.Container and Library.Container.Parent) or ResolveGuiParent();
+            local PopupScreenGui = PopupParent;
+            if not PopupScreenGui:IsA("ScreenGui") then
+                PopupScreenGui = PopupParent:FindFirstAncestorOfClass("ScreenGui");
+            end
             local PopupData = Library:Create('Frame', {
                 Name = 'ColorPickerPopup';
                 Visible = false;
@@ -1380,24 +1385,23 @@ local Defaults; do
                 return Radius * WheelRadiusScale;
             end
 
-            local function GetPointerPosition(InputObject)
-                if InputObject then
-                    local InputType = InputObject.UserInputType;
-                    if InputType == Enum.UserInputType.Touch and typeof(InputObject.Position) == "Vector3" then
-                        return Vector2.new(InputObject.Position.X, InputObject.Position.Y);
-                    end
-                    if InputType == Enum.UserInputType.MouseButton1
-                        or InputType == Enum.UserInputType.MouseButton2
-                        or InputType == Enum.UserInputType.MouseButton3
-                        or InputType == Enum.UserInputType.MouseMovement
-                    then
-                        return UserInputService:GetMouseLocation();
-                    end
-                    if typeof(InputObject.Position) == "Vector3" then
-                        return Vector2.new(InputObject.Position.X, InputObject.Position.Y);
+            local function ToGuiPosition(ScreenPoint)
+                local Point = ScreenPoint;
+                if PopupScreenGui and (not PopupScreenGui.IgnoreGuiInset) then
+                    local TopLeftInset = select(1, GuiService:GetGuiInset());
+                    if typeof(TopLeftInset) == "Vector2" then
+                        Point = Point - TopLeftInset;
                     end
                 end
-                return UserInputService:GetMouseLocation();
+                return Point;
+            end
+
+            local function GetPointerPosition(InputObject)
+                if InputObject and InputObject.UserInputType == Enum.UserInputType.Touch and typeof(InputObject.Position) == "Vector3" then
+                    return ToGuiPosition(Vector2.new(InputObject.Position.X, InputObject.Position.Y));
+                end
+
+                return ToGuiPosition(UserInputService:GetMouseLocation());
             end
 
             local function HueToWheelAngle(HueValue)
@@ -1733,8 +1737,13 @@ local Defaults; do
                 end
             end);
 
-            ModalBlocker.MouseButton1Click:Connect(function()
-                -- Intentionally empty: this consumes outside clicks so controls behind the popup cannot be clicked.
+            ModalBlocker.InputBegan:Connect(function(Input)
+                if PopupOpen and IsPointerInput(Input) then
+                    local PointerPos = GetPointerPosition(Input);
+                    if (not IsPointInsideGui(PopupData, PointerPos)) and (not IsPointInsideGui(Preview, PointerPos)) then
+                        SetPopupVisible(false, false);
+                    end
+                end
             end);
 
             HexInput.FocusLost:Connect(function()
