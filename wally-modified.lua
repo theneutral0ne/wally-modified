@@ -1047,6 +1047,7 @@ local Defaults; do
 
             local PickerSize = math.clamp(tonumber(Options.size) or 90, 70, 130);
             local WheelImage = Options.wheelImage or "rbxassetid://6020299385";
+            local WheelOutsidePadding = math.max(0, tonumber(Options.wheelOutsidePadding) or 2);
             local WheelTop = 6;
             local ShadeTop = WheelTop + PickerSize + 6;
             local AlphaTop = ShadeTop + 20;
@@ -1355,6 +1356,21 @@ local Defaults; do
                 return Radius;
             end
 
+            local function HueToWheelAngle(HueValue)
+                return (0.5 - HueValue) * (2 * math.pi);
+            end
+
+            local function WheelAngleToHue(AngleValue)
+                return (0.5 - (AngleValue / (2 * math.pi))) % 1;
+            end
+
+            local function IsPointerInsideWheel(Point, RadiusPadding)
+                local Pointer = Point or UserInputService:GetMouseLocation();
+                local Radius = GetRadius() + (tonumber(RadiusPadding) or 0);
+                local Center = Wheel.AbsolutePosition + (Wheel.AbsoluteSize * 0.5);
+                return ((Pointer - Center).Magnitude <= Radius);
+            end
+
             local function UpdateInputs()
                 local FocusedBox = UserInputService:GetFocusedTextBox();
                 if HexInput and FocusedBox ~= HexInput then
@@ -1369,7 +1385,7 @@ local Defaults; do
             local function UpdateVisuals()
                 if Selector then
                     local Radius = GetRadius();
-                    local Angle = Hue * (math.pi * 2);
+                    local Angle = HueToWheelAngle(Hue);
                     local Distance = Saturation * Radius;
                     local Offset = Vector2.new(math.cos(Angle), math.sin(Angle)) * Distance;
                     Selector.Position = UDim2.new(0.5, Offset.X, 0.5, Offset.Y);
@@ -1518,13 +1534,16 @@ local Defaults; do
                 local Radius = GetRadius();
 
                 local Magnitude = Offset.Magnitude;
+                if Magnitude > (Radius + WheelOutsidePadding) then
+                    return;
+                end
                 if Magnitude > Radius and Magnitude > 0 then
                     Offset = Offset.Unit * Radius;
                     Magnitude = Radius;
                 end
 
                 local NewSaturation = (Radius > 0 and (Magnitude / Radius) or 0);
-                local NewHue = (math.atan2(Offset.Y, Offset.X) / (2 * math.pi)) % 1;
+                local NewHue = WheelAngleToHue(math.atan2(Offset.Y, Offset.X));
                 ApplyState(NewHue, NewSaturation, Value, CurrentTransparency, true);
             end
 
@@ -1556,6 +1575,10 @@ local Defaults; do
 
             Wheel.InputBegan:Connect(function(Input)
                 if PopupOpen and IsPointerInput(Input) then
+                    local Pointer = UserInputService:GetMouseLocation();
+                    if not IsPointerInsideWheel(Pointer, 0) then
+                        return;
+                    end
                     WheelDragging = true;
                     UpdateFromWheelMouse();
                 end
