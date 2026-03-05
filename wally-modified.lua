@@ -19,7 +19,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.42",
+    Build = "2026-03-05.43",
     BindDebug = false
 };
 local Defaults; do
@@ -1340,6 +1340,10 @@ local Defaults; do
             local ActiveWheelInput;
             local ActiveShadeInput;
             local ActiveAlphaInput;
+            local DragUpdateConnection;
+            local WheelPointerOffset = Vector2.new(0, 0);
+            local ShadePointerOffset = Vector2.new(0, 0);
+            local AlphaPointerOffset = Vector2.new(0, 0);
 
             local Hue, Saturation, Value = Default:ToHSV();
             local CurrentColor = Default;
@@ -1604,6 +1608,13 @@ local Defaults; do
                 ActiveWheelInput = nil;
                 ActiveShadeInput = nil;
                 ActiveAlphaInput = nil;
+                WheelPointerOffset = Vector2.new(0, 0);
+                ShadePointerOffset = Vector2.new(0, 0);
+                AlphaPointerOffset = Vector2.new(0, 0);
+                if DragUpdateConnection then
+                    DragUpdateConnection:Disconnect();
+                    DragUpdateConnection = nil;
+                end
 
                 if Library.ActiveColorPopup == PopupData then
                     Library.ActiveColorPopup = nil;
@@ -1681,6 +1692,46 @@ local Defaults; do
                 return InputObject.UserInputType == Enum.UserInputType.MouseButton1 or InputObject.UserInputType == Enum.UserInputType.Touch;
             end
 
+            local function ComputePointerOffset(ResolvedPoint, InputObject)
+                if InputObject and InputObject.UserInputType == Enum.UserInputType.MouseButton1 then
+                    return ResolvedPoint - UserInputService:GetMouseLocation();
+                end
+                return Vector2.new(0, 0);
+            end
+
+            local function StopDragUpdaterIfIdle()
+                if WheelDragging or ShadeDragging or AlphaDragging then
+                    return;
+                end
+                if DragUpdateConnection then
+                    DragUpdateConnection:Disconnect();
+                    DragUpdateConnection = nil;
+                end
+            end
+
+            local function EnsureDragUpdater()
+                if (not EnableDrag) or DragUpdateConnection then
+                    return;
+                end
+
+                DragUpdateConnection = RunService.RenderStepped:Connect(function()
+                    if (not PopupOpen) then
+                        return;
+                    end
+
+                    local MousePos = UserInputService:GetMouseLocation();
+                    if WheelDragging and ActiveWheelInput and ActiveWheelInput.UserInputType == Enum.UserInputType.MouseButton1 then
+                        UpdateFromWheelPointer(MousePos + WheelPointerOffset);
+                    end
+                    if ShadeDragging and ActiveShadeInput and ActiveShadeInput.UserInputType == Enum.UserInputType.MouseButton1 then
+                        UpdateFromShadePointer(MousePos + ShadePointerOffset);
+                    end
+                    if AlphaDragging and ActiveAlphaInput and ActiveAlphaInput.UserInputType == Enum.UserInputType.MouseButton1 then
+                        UpdateFromAlphaPointer(MousePos + AlphaPointerOffset);
+                    end
+                end);
+            end
+
             local function BeginWheelDrag(Input)
                 if (not PopupOpen) or (not IsPointerInput(Input)) then
                     return;
@@ -1702,6 +1753,10 @@ local Defaults; do
                     ActiveWheelInput = Input;
                     ActiveShadeInput = nil;
                     ActiveAlphaInput = nil;
+                    WheelPointerOffset = ComputePointerOffset(PointerPos, Input);
+                    ShadePointerOffset = Vector2.new(0, 0);
+                    AlphaPointerOffset = Vector2.new(0, 0);
+                    EnsureDragUpdater();
                 else
                     WheelDragging = false;
                     ShadeDragging = false;
@@ -1709,6 +1764,10 @@ local Defaults; do
                     ActiveWheelInput = nil;
                     ActiveShadeInput = nil;
                     ActiveAlphaInput = nil;
+                    WheelPointerOffset = Vector2.new(0, 0);
+                    ShadePointerOffset = Vector2.new(0, 0);
+                    AlphaPointerOffset = Vector2.new(0, 0);
+                    StopDragUpdaterIfIdle();
                 end
             end
 
@@ -1730,6 +1789,10 @@ local Defaults; do
                     ActiveWheelInput = nil;
                     ActiveShadeInput = Input;
                     ActiveAlphaInput = nil;
+                    WheelPointerOffset = Vector2.new(0, 0);
+                    ShadePointerOffset = ComputePointerOffset(PointerPos, Input);
+                    AlphaPointerOffset = Vector2.new(0, 0);
+                    EnsureDragUpdater();
                 else
                     WheelDragging = false;
                     ShadeDragging = false;
@@ -1737,6 +1800,10 @@ local Defaults; do
                     ActiveWheelInput = nil;
                     ActiveShadeInput = nil;
                     ActiveAlphaInput = nil;
+                    WheelPointerOffset = Vector2.new(0, 0);
+                    ShadePointerOffset = Vector2.new(0, 0);
+                    AlphaPointerOffset = Vector2.new(0, 0);
+                    StopDragUpdaterIfIdle();
                 end
             end
 
@@ -1758,6 +1825,10 @@ local Defaults; do
                     ActiveWheelInput = nil;
                     ActiveShadeInput = nil;
                     ActiveAlphaInput = Input;
+                    WheelPointerOffset = Vector2.new(0, 0);
+                    ShadePointerOffset = Vector2.new(0, 0);
+                    AlphaPointerOffset = ComputePointerOffset(PointerPos, Input);
+                    EnsureDragUpdater();
                 else
                     WheelDragging = false;
                     ShadeDragging = false;
@@ -1765,6 +1836,10 @@ local Defaults; do
                     ActiveWheelInput = nil;
                     ActiveShadeInput = nil;
                     ActiveAlphaInput = nil;
+                    WheelPointerOffset = Vector2.new(0, 0);
+                    ShadePointerOffset = Vector2.new(0, 0);
+                    AlphaPointerOffset = Vector2.new(0, 0);
+                    StopDragUpdaterIfIdle();
                 end
             end
 
@@ -1803,18 +1878,17 @@ local Defaults; do
                     return;
                 end
 
-                local PointerMove = (Input.UserInputType == Enum.UserInputType.MouseMovement) or (Input.UserInputType == Enum.UserInputType.Touch);
-                if (not EnableDrag) or (not PointerMove) then
+                if (not EnableDrag) or (Input.UserInputType ~= Enum.UserInputType.Touch) then
                     return;
                 end
 
-                if WheelDragging and (Input == ActiveWheelInput or (ActiveWheelInput and ActiveWheelInput.UserInputType == Enum.UserInputType.MouseButton1 and Input.UserInputType == Enum.UserInputType.MouseMovement)) then
+                if WheelDragging and ActiveWheelInput and ActiveWheelInput.UserInputType == Enum.UserInputType.Touch and Input == ActiveWheelInput then
                     UpdateFromWheelPointer(ResolvePointerPosition(Input, WheelContainer));
                 end
-                if ShadeDragging and (Input == ActiveShadeInput or (ActiveShadeInput and ActiveShadeInput.UserInputType == Enum.UserInputType.MouseButton1 and Input.UserInputType == Enum.UserInputType.MouseMovement)) then
+                if ShadeDragging and ActiveShadeInput and ActiveShadeInput.UserInputType == Enum.UserInputType.Touch and Input == ActiveShadeInput then
                     UpdateFromShadePointer(ResolvePointerPosition(Input, ShadeBar));
                 end
-                if AlphaDragging and (Input == ActiveAlphaInput or (ActiveAlphaInput and ActiveAlphaInput.UserInputType == Enum.UserInputType.MouseButton1 and Input.UserInputType == Enum.UserInputType.MouseMovement)) then
+                if AlphaDragging and ActiveAlphaInput and ActiveAlphaInput.UserInputType == Enum.UserInputType.Touch and Input == ActiveAlphaInput then
                     UpdateFromAlphaPointer(ResolvePointerPosition(Input, AlphaBar));
                 end
             end);
@@ -1824,15 +1898,19 @@ local Defaults; do
                     if Input == ActiveWheelInput or (Input.UserInputType == Enum.UserInputType.MouseButton1 and ActiveWheelInput and ActiveWheelInput.UserInputType == Enum.UserInputType.MouseButton1) then
                         WheelDragging = false;
                         ActiveWheelInput = nil;
+                        WheelPointerOffset = Vector2.new(0, 0);
                     end
                     if Input == ActiveShadeInput or (Input.UserInputType == Enum.UserInputType.MouseButton1 and ActiveShadeInput and ActiveShadeInput.UserInputType == Enum.UserInputType.MouseButton1) then
                         ShadeDragging = false;
                         ActiveShadeInput = nil;
+                        ShadePointerOffset = Vector2.new(0, 0);
                     end
                     if Input == ActiveAlphaInput or (Input.UserInputType == Enum.UserInputType.MouseButton1 and ActiveAlphaInput and ActiveAlphaInput.UserInputType == Enum.UserInputType.MouseButton1) then
                         AlphaDragging = false;
                         ActiveAlphaInput = nil;
+                        AlphaPointerOffset = Vector2.new(0, 0);
                     end
+                    StopDragUpdaterIfIdle();
                 end
             end);
 
