@@ -3,7 +3,7 @@ local RunService = game:GetService("RunService");
 local Debris = game:GetService("Debris");
 local CoreGui = game:GetService("CoreGui");
 
-local Library = {Count = 0, Queue = {}, Callbacks = {}, RainbowTable = {}, Toggled = true, Binds = {}, Build = "2026-03-05.5", BindDebug = true};
+local Library = {Count = 0, Queue = {}, Callbacks = {}, RainbowTable = {}, Toggled = true, Binds = {}, Build = "2026-03-05.6", BindDebug = false};
 local Defaults; do
     local Dragger = {}; do
         function Dragger.New(Frame)
@@ -470,6 +470,39 @@ local Defaults; do
                 return UserInputType, KeyCode, ValueType;
             end
 
+            local function GetUserInputTypeName(UserInputType)
+                if typeof(UserInputType) == "EnumItem" and UserInputType.EnumType == Enum.UserInputType then
+                    return UserInputType.Name;
+                end
+
+                local Text = tostring(UserInputType):gsub("^Enum%.UserInputType%.", "");
+                if Text ~= "" and Text ~= "nil" then
+                    return Text;
+                end
+
+                return nil;
+            end
+
+            local function ParseKeyCode(KeyCodeValue)
+                if typeof(KeyCodeValue) == "EnumItem" and KeyCodeValue.EnumType == Enum.KeyCode then
+                    return KeyCodeValue;
+                end
+
+                local Text;
+                if type(KeyCodeValue) == "string" then
+                    Text = KeyCodeValue;
+                else
+                    Text = tostring(KeyCodeValue);
+                end
+
+                if type(Text) == "string" then
+                    Text = Text:gsub("^Enum%.KeyCode%.", "");
+                    return GetEnumItemSafe(Enum.KeyCode, Text);
+                end
+
+                return nil;
+            end
+
             local function DetectPressedKeyboardKey()
                 for _, KeyCode in next, Enum.KeyCode:GetEnumItems() do
                     if KeyCode ~= Enum.KeyCode.Unknown and (not Banned[KeyCode.Name]) and (not string.find(KeyCode.Name, "MouseButton", 1, true)) then
@@ -487,9 +520,11 @@ local Defaults; do
                     return nil;
                 end
 
-                if UserInputType == Enum.UserInputType.Keyboard or UserInputType == Enum.UserInputType.TextInput then
-                    if typeof(KeyCode) == "EnumItem" and KeyCode.EnumType == Enum.KeyCode and KeyCode ~= Enum.KeyCode.Unknown and (not Banned[KeyCode.Name]) then
-                        return KeyCode;
+                local UserInputTypeName = GetUserInputTypeName(UserInputType);
+                if UserInputTypeName == "Keyboard" or UserInputTypeName == "TextInput" then
+                    local ParsedKeyCode = ParseKeyCode(KeyCode);
+                    if ParsedKeyCode and ParsedKeyCode ~= Enum.KeyCode.Unknown and (not Banned[ParsedKeyCode.Name]) then
+                        return ParsedKeyCode;
                     end
 
                     local FallbackKey = DetectPressedKeyboardKey();
@@ -500,8 +535,9 @@ local Defaults; do
                     return nil;
                 end
 
-                if typeof(UserInputType) == "EnumItem" and UserInputType.EnumType == Enum.UserInputType and (not KeyboardOnly) and Allowed[UserInputType.Name] then
-                    return UserInputType;
+                if (not KeyboardOnly) and UserInputTypeName and Allowed[UserInputTypeName] then
+                    local ParsedInputType = GetEnumItemSafe(Enum.UserInputType, UserInputTypeName);
+                    return ParsedInputType or UserInputType;
                 end
 
                 return nil;
@@ -624,27 +660,32 @@ local Defaults; do
                     while Library.Binding do
                         local InputObject, Gpe = UserInputService.InputBegan:Wait();
                         local UserInputType, KeyCode, InputValueType = ReadInputObject(InputObject);
+                        local UserInputTypeName = GetUserInputTypeName(UserInputType);
+                        local ParsedKeyCode = ParseKeyCode(KeyCode);
 
                         local KeyName = "nil";
-                        if typeof(KeyCode) == "EnumItem" then
+                        if ParsedKeyCode then
+                            KeyName = ParsedKeyCode.Name;
+                        elseif typeof(KeyCode) == "EnumItem" then
                             KeyName = KeyCode.Name;
                         end
 
                         DebugBindLog(string.format(
-                            "Captured Input | TypeOf=%s | UserInputType=%s | KeyCode=%s | KeyName=%s | Gpe=%s",
+                            "Captured Input | TypeOf=%s | UserInputType=%s | UserInputTypeName=%s | KeyCode=%s | KeyName=%s | Gpe=%s",
                             tostring(InputValueType),
                             tostring(UserInputType),
+                            tostring(UserInputTypeName),
                             tostring(KeyCode),
                             tostring(KeyName),
                             tostring(Gpe)
                         ));
 
-                        if UserInputType == Enum.UserInputType.Keyboard or UserInputType == Enum.UserInputType.TextInput then
-                            if KeyCode == Enum.KeyCode.Escape then
+                        if UserInputTypeName == "Keyboard" or UserInputTypeName == "TextInput" then
+                            if ParsedKeyCode == Enum.KeyCode.Escape then
                                 DebugBindLog("Rebind cancelled with Escape");
                                 break;
                             end
-                            if KeyCode == Enum.KeyCode.Backspace or KeyCode == Enum.KeyCode.Delete then
+                            if ParsedKeyCode == Enum.KeyCode.Backspace or ParsedKeyCode == Enum.KeyCode.Delete then
                                 Location[Flag] = nil;
                                 DebugBindLog("Binding cleared with Backspace/Delete");
                                 break;
@@ -1310,7 +1351,7 @@ local Defaults; do
                     Name = Name;
                     TextStrokeTransparency = Library.Options.textstroke;
                     TextStrokeColor3 = Library.Options.strokecolor;
-                    Text = "\r" .. Name;
+                    Text = "";
                     BackgroundTransparency = 1;
                     TextColor3 = Library.Options.textcolor;
                     Position = UDim2.new(0, 5, 0, 2);
@@ -1318,6 +1359,19 @@ local Defaults; do
                     TextXAlignment = Enum.TextXAlignment.Left;
                     Font = Library.Options.font;
                     TextSize = Library.Options.fontsize;
+                    Library:Create('TextLabel', {
+                        Name = 'Title';
+                        TextStrokeTransparency = Library.Options.textstroke;
+                        TextStrokeColor3 = Library.Options.strokecolor;
+                        Text = "\r" .. Name;
+                        BackgroundTransparency = 1;
+                        TextColor3 = Library.Options.textcolor;
+                        Position = UDim2.new(0, 0, 0, 0);
+                        Size     = UDim2.new(1, -95, 1, 0);
+                        TextXAlignment = Enum.TextXAlignment.Left;
+                        Font = Library.Options.font;
+                        TextSize = Library.Options.fontsize;
+                    });
                     Library:Create('Frame', {
                         Name = 'Container';
                         Size = UDim2.new(0, 60, 0, 20);
@@ -1330,8 +1384,8 @@ local Defaults; do
                             Text = Default;
                             BackgroundTransparency = 1;
                             TextColor3 = Library.Options.textcolor;
-                            Position = UDim2.new(0, -30, 0, 0);
-                            Size     = UDim2.new(0, 28, 1, 0);
+                            Position = UDim2.new(0, 0, 0, 0);
+                            Size     = UDim2.new(0, 22, 1, 0);
                             TextXAlignment = Enum.TextXAlignment.Right;
                             Font = Library.Options.font;
                             TextSize = Library.Options.fontsize;
@@ -1342,7 +1396,7 @@ local Defaults; do
                         Library:Create('TextButton', {
                             Name = 'Button';
                             Size = UDim2.new(0, 5, 1, -2);
-                            Position = UDim2.new(0, 0, 0, 1);
+                            Position = UDim2.new(0, 24, 0, 1);
                             AutoButtonColor = false;
                             Text = "";
                             BackgroundColor3 = Color3.fromRGB(20, 20, 20);
@@ -1354,8 +1408,8 @@ local Defaults; do
                         Library:Create('Frame', {
                             Name = 'Line';
                             BackgroundTransparency = 0;
-                            Position = UDim2.new(0, 0, 0.5, 0);
-                            Size     = UDim2.new(1, 0, 0, 1);
+                            Position = UDim2.new(0, 24, 0.5, 0);
+                            Size     = UDim2.new(1, -24, 0, 1);
                             BackgroundColor3 = Library.Options.textcolor;
                             BorderSizePixel = 0;
                         });
@@ -1372,6 +1426,7 @@ local Defaults; do
             local Dragging = false;
             local CurrentValue;
             local PrecisionFactor = 10 ^ Decimals;
+            local TrackInset = 24;
 
             local function NormalizeValue(Raw)
                 local Value = math.clamp(tonumber(Raw) or Min, Min, Max);
@@ -1398,8 +1453,12 @@ local Defaults; do
             local function SetValue(RawValue, FireCallback)
                 local Value = NormalizeValue(RawValue);
                 local Percent = ValueToPercent(Value);
+                local TrackWidth = math.max(SliderContainer.AbsoluteSize.X - TrackInset, 1);
+                local KnobWidth = math.max(Knob.AbsoluteSize.X, 5);
+                local MaxOffset = math.max(TrackWidth - KnobWidth, 0);
+                local KnobOffset = TrackInset + (MaxOffset * math.clamp(Percent, 0, 1));
 
-                Knob.Position = UDim2.new(math.clamp(Percent, 0, 0.99), 0, 0, 1);
+                Knob.Position = UDim2.new(0, KnobOffset, 0, 1);
                 ValueLabel.Text = FormatValue(Value);
                 Location[Flag] = Value;
 
@@ -1413,7 +1472,9 @@ local Defaults; do
 
             local function UpdateFromMouse()
                 local MousePos = UserInputService:GetMouseLocation();
-                local Percent = (MousePos.X - SliderContainer.AbsolutePosition.X) / SliderContainer.AbsoluteSize.X;
+                local TrackWidth = math.max(SliderContainer.AbsoluteSize.X - TrackInset, 1);
+                local TrackStartX = SliderContainer.AbsolutePosition.X + TrackInset;
+                local Percent = (MousePos.X - TrackStartX) / TrackWidth;
                 Percent = math.clamp(Percent, 0, 1);
                 SetValue(Min + ((Max - Min) * Percent), true);
             end
