@@ -19,7 +19,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.37",
+    Build = "2026-03-05.41",
     BindDebug = false
 };
 local Defaults; do
@@ -1050,6 +1050,7 @@ local Defaults; do
             local WheelImage = Options.wheelImage or "rbxassetid://6020299385";
             local WheelRadiusScale = math.clamp(tonumber(Options.wheelRadiusScale) or 1, 0.6, 1);
             local WheelOutsidePadding = math.max(0, tonumber(Options.wheelOutsidePadding) or 4);
+            local EnableDrag = Options.drag == true or Options.draggable == true;
             local WheelTop = 6;
             local ShadeTop = WheelTop + PickerSize + 6;
             local AlphaTop = ShadeTop + 20;
@@ -1088,10 +1089,6 @@ local Defaults; do
             });
 
             local PopupParent = (Library.Container and Library.Container.Parent) or ResolveGuiParent();
-            local PopupScreenGui = PopupParent;
-            if not PopupScreenGui:IsA("ScreenGui") then
-                PopupScreenGui = PopupParent:FindFirstAncestorOfClass("ScreenGui");
-            end
             local PopupData = Library:Create('Frame', {
                 Name = 'ColorPickerPopup';
                 Visible = false;
@@ -1399,22 +1396,71 @@ local Defaults; do
                 return Radius * WheelRadiusScale;
             end
 
-            local function ToGuiPoint(ScreenPoint)
-                local Point = ScreenPoint;
-                if PopupScreenGui and (not PopupScreenGui.IgnoreGuiInset) then
-                    local TopLeftInset = select(1, GuiService:GetGuiInset());
-                    if typeof(TopLeftInset) == "Vector2" then
-                        Point = Point - TopLeftInset;
-                    end
+            local function IsPointInsideGui(GuiObject, Point)
+                if not GuiObject or (not GuiObject.Parent) then
+                    return false;
                 end
-                return Point;
+                local Position = GuiObject.AbsolutePosition;
+                local Size = GuiObject.AbsoluteSize;
+                return Point.X >= Position.X and Point.X <= (Position.X + Size.X) and Point.Y >= Position.Y and Point.Y <= (Position.Y + Size.Y);
             end
 
-            local function GetPointerPosition(InputObject, _)
-                if InputObject and typeof(InputObject.Position) == "Vector3" then
-                    return ToGuiPoint(Vector2.new(InputObject.Position.X, InputObject.Position.Y));
+            local function GetPointerCandidates(InputObject)
+                local Candidates = {};
+                local function Push(Point)
+                    if typeof(Point) == "Vector2" then
+                        Candidates[#Candidates + 1] = Point;
+                    end
                 end
-                return ToGuiPoint(UserInputService:GetMouseLocation());
+
+                local MousePos = UserInputService:GetMouseLocation();
+                Push(MousePos);
+
+                local TopLeftInset = select(1, GuiService:GetGuiInset());
+                if typeof(TopLeftInset) == "Vector2" then
+                    Push(MousePos - TopLeftInset);
+                    Push(MousePos + TopLeftInset);
+                end
+
+                if InputObject and typeof(InputObject.Position) == "Vector3" then
+                    local InputPos = Vector2.new(InputObject.Position.X, InputObject.Position.Y);
+                    Push(InputPos);
+                    if typeof(TopLeftInset) == "Vector2" then
+                        Push(InputPos - TopLeftInset);
+                        Push(InputPos + TopLeftInset);
+                    end
+                end
+
+                return Candidates;
+            end
+
+            local function ResolvePointerPosition(InputObject, TargetGui)
+                local Candidates = GetPointerCandidates(InputObject);
+                if #Candidates == 0 then
+                    return UserInputService:GetMouseLocation();
+                end
+
+                if (not TargetGui) or (not TargetGui.Parent) then
+                    return Candidates[1];
+                end
+
+                local Center = TargetGui.AbsolutePosition + (TargetGui.AbsoluteSize * 0.5);
+                local BestPoint = Candidates[1];
+                local BestDistance = (BestPoint - Center).Magnitude;
+                local BestInside = IsPointInsideGui(TargetGui, BestPoint);
+
+                for Index = 2, #Candidates do
+                    local Candidate = Candidates[Index];
+                    local Inside = IsPointInsideGui(TargetGui, Candidate);
+                    local Distance = (Candidate - Center).Magnitude;
+                    if (Inside and (not BestInside)) or (Inside == BestInside and Distance < BestDistance) then
+                        BestInside = Inside;
+                        BestDistance = Distance;
+                        BestPoint = Candidate;
+                    end
+                end
+
+                return BestPoint;
             end
 
             local function HueToWheelAngle(HueValue)
@@ -1493,15 +1539,6 @@ local Defaults; do
                 end
                 local NewHue, NewSaturation, NewValue = NewColor:ToHSV();
                 ApplyState(NewHue, NewSaturation, NewValue, NewTransparency, FireCallback);
-            end
-
-            local function IsPointInsideGui(GuiObject, Point)
-                if not GuiObject or (not GuiObject.Parent) then
-                    return false;
-                end
-                local Position = GuiObject.AbsolutePosition;
-                local Size = GuiObject.AbsoluteSize;
-                return Point.X >= Position.X and Point.X <= (Position.X + Size.X) and Point.Y >= Position.Y and Point.Y <= (Position.Y + Size.Y);
             end
 
             local function PositionPopup()
@@ -1588,7 +1625,7 @@ local Defaults; do
             end
 
             local function UpdateFromWheelPointer(PointerPos)
-                local MousePos = PointerPos or GetPointerPosition(ActiveWheelInput, WheelContainer);
+                local MousePos = PointerPos or ResolvePointerPosition(ActiveWheelInput, WheelContainer);
                 local Center = Wheel.AbsolutePosition + (Wheel.AbsoluteSize * 0.5);
                 local Offset = MousePos - Center;
                 local Radius = GetRadius();
@@ -1603,12 +1640,24 @@ local Defaults; do
                 end
 
                 local NewSaturation = (Radius > 0 and (Magnitude / Radius) or 0);
-                local NewHue = WheelAngleToHue(math.atan2(Offset.Y, Offset.X));
+                local SafeX = Offset.X;
+                if math.abs(SafeX) < 1e-5 then
+                    SafeX = (SafeX >= 0 and 1e-5 or -1e-5);
+                end
+
+                local Angle = math.atan(Offset.Y / SafeX) + (math.pi * 0.5);
+                if Offset.X <= 0 then
+                    Angle = Angle + math.pi;
+                end
+                Angle = Angle % (2 * math.pi);
+
+                -- DevForum-tested wheel math, shifted so hue=0 (red) aligns on the left side of this wheel texture.
+                local NewHue = ((Angle / (2 * math.pi)) + 0.25) % 1;
                 ApplyState(NewHue, NewSaturation, 1, CurrentTransparency, true);
             end
 
             local function UpdateFromShadePointer(PointerPos)
-                local MousePos = PointerPos or GetPointerPosition(ActiveShadeInput, ShadeBar);
+                local MousePos = PointerPos or ResolvePointerPosition(ActiveShadeInput, ShadeBar);
                 local ShadeWidth = math.max(ShadeBar.AbsoluteSize.X, 1);
                 local Percent = (MousePos.X - ShadeBar.AbsolutePosition.X) / ShadeWidth;
                 Percent = math.clamp(Percent, 0, 1);
@@ -1616,7 +1665,7 @@ local Defaults; do
             end
 
             local function UpdateFromAlphaPointer(PointerPos)
-                local MousePos = PointerPos or GetPointerPosition(ActiveAlphaInput, AlphaBar);
+                local MousePos = PointerPos or ResolvePointerPosition(ActiveAlphaInput, AlphaBar);
                 local AlphaWidth = math.max(AlphaBar.AbsoluteSize.X, 1);
                 local Percent = (MousePos.X - AlphaBar.AbsolutePosition.X) / AlphaWidth;
                 Percent = math.clamp(Percent, 0, 1);
@@ -1632,10 +1681,7 @@ local Defaults; do
                     return;
                 end
 
-                local PointerPos = GetPointerPosition(Input, WheelContainer);
-                if not IsPointInsideGui(WheelContainer, PointerPos) then
-                    return;
-                end
+                local PointerPos = ResolvePointerPosition(Input, WheelContainer);
 
                 local Center = Wheel.AbsolutePosition + (Wheel.AbsoluteSize * 0.5);
                 local Radius = GetRadius();
@@ -1643,13 +1689,22 @@ local Defaults; do
                     return;
                 end
 
-                WheelDragging = true;
-                ShadeDragging = false;
-                AlphaDragging = false;
-                ActiveWheelInput = Input;
-                ActiveShadeInput = nil;
-                ActiveAlphaInput = nil;
                 UpdateFromWheelPointer(PointerPos);
+                if EnableDrag then
+                    WheelDragging = true;
+                    ShadeDragging = false;
+                    AlphaDragging = false;
+                    ActiveWheelInput = Input;
+                    ActiveShadeInput = nil;
+                    ActiveAlphaInput = nil;
+                else
+                    WheelDragging = false;
+                    ShadeDragging = false;
+                    AlphaDragging = false;
+                    ActiveWheelInput = nil;
+                    ActiveShadeInput = nil;
+                    ActiveAlphaInput = nil;
+                end
             end
 
             local function BeginShadeDrag(Input)
@@ -1657,18 +1712,27 @@ local Defaults; do
                     return;
                 end
 
-                local PointerPos = GetPointerPosition(Input, ShadeBar);
+                local PointerPos = ResolvePointerPosition(Input, ShadeBar);
                 if not IsPointInsideGui(ShadeBar, PointerPos) then
                     return;
                 end
 
-                WheelDragging = false;
-                ShadeDragging = true;
-                AlphaDragging = false;
-                ActiveWheelInput = nil;
-                ActiveShadeInput = Input;
-                ActiveAlphaInput = nil;
                 UpdateFromShadePointer(PointerPos);
+                if EnableDrag then
+                    WheelDragging = false;
+                    ShadeDragging = true;
+                    AlphaDragging = false;
+                    ActiveWheelInput = nil;
+                    ActiveShadeInput = Input;
+                    ActiveAlphaInput = nil;
+                else
+                    WheelDragging = false;
+                    ShadeDragging = false;
+                    AlphaDragging = false;
+                    ActiveWheelInput = nil;
+                    ActiveShadeInput = nil;
+                    ActiveAlphaInput = nil;
+                end
             end
 
             local function BeginAlphaDrag(Input)
@@ -1676,18 +1740,27 @@ local Defaults; do
                     return;
                 end
 
-                local PointerPos = GetPointerPosition(Input, AlphaBar);
+                local PointerPos = ResolvePointerPosition(Input, AlphaBar);
                 if not IsPointInsideGui(AlphaBar, PointerPos) then
                     return;
                 end
 
-                WheelDragging = false;
-                ShadeDragging = false;
-                AlphaDragging = true;
-                ActiveWheelInput = nil;
-                ActiveShadeInput = nil;
-                ActiveAlphaInput = Input;
                 UpdateFromAlphaPointer(PointerPos);
+                if EnableDrag then
+                    WheelDragging = false;
+                    ShadeDragging = false;
+                    AlphaDragging = true;
+                    ActiveWheelInput = nil;
+                    ActiveShadeInput = nil;
+                    ActiveAlphaInput = Input;
+                else
+                    WheelDragging = false;
+                    ShadeDragging = false;
+                    AlphaDragging = false;
+                    ActiveWheelInput = nil;
+                    ActiveShadeInput = nil;
+                    ActiveAlphaInput = nil;
+                end
             end
 
             if Preview then
@@ -1726,18 +1799,18 @@ local Defaults; do
                 end
 
                 local PointerMove = (Input.UserInputType == Enum.UserInputType.MouseMovement) or (Input.UserInputType == Enum.UserInputType.Touch);
-                if not PointerMove then
+                if (not EnableDrag) or (not PointerMove) then
                     return;
                 end
 
                 if WheelDragging and (Input == ActiveWheelInput or (ActiveWheelInput and ActiveWheelInput.UserInputType == Enum.UserInputType.MouseButton1 and Input.UserInputType == Enum.UserInputType.MouseMovement)) then
-                    UpdateFromWheelPointer(GetPointerPosition(Input, WheelContainer));
+                    UpdateFromWheelPointer(ResolvePointerPosition(Input, WheelContainer));
                 end
                 if ShadeDragging and (Input == ActiveShadeInput or (ActiveShadeInput and ActiveShadeInput.UserInputType == Enum.UserInputType.MouseButton1 and Input.UserInputType == Enum.UserInputType.MouseMovement)) then
-                    UpdateFromShadePointer(GetPointerPosition(Input, ShadeBar));
+                    UpdateFromShadePointer(ResolvePointerPosition(Input, ShadeBar));
                 end
                 if AlphaDragging and (Input == ActiveAlphaInput or (ActiveAlphaInput and ActiveAlphaInput.UserInputType == Enum.UserInputType.MouseButton1 and Input.UserInputType == Enum.UserInputType.MouseMovement)) then
-                    UpdateFromAlphaPointer(GetPointerPosition(Input, AlphaBar));
+                    UpdateFromAlphaPointer(ResolvePointerPosition(Input, AlphaBar));
                 end
             end);
 
