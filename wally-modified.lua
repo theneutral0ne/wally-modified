@@ -1724,7 +1724,6 @@ local Defaults; do
 
             ModalBlocker.InputBegan:Connect(function(Input)
                 if PopupOpen and IsPointerInput(Input) then
-                    -- Blocker is disabled while popup is open to avoid stealing input from picker controls.
                 end
             end);
 
