@@ -19,7 +19,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.36",
+    Build = "2026-03-05.37",
     BindDebug = false
 };
 local Defaults; do
@@ -1281,7 +1281,7 @@ local Defaults; do
                 Visible = false;
                 BackgroundTransparency = 1;
                 BorderSizePixel = 0;
-                Active = true;
+                Active = false;
                 Size = UDim2.new(1, 0, 1, 0);
                 Position = UDim2.new(0, 0, 0, 0);
                 ZIndex = 39;
@@ -1541,7 +1541,7 @@ local Defaults; do
                     PopupOpen = true;
                     PositionPopup();
                     PopupData.Visible = true;
-                    ModalBlocker.Visible = true;
+                    ModalBlocker.Visible = false;
 
                     if Instant then
                         PopupData.Size = UDim2.new(0, PopupWidth, 0, PopupHeight);
@@ -1708,7 +1708,7 @@ local Defaults; do
 
             ModalBlocker.InputBegan:Connect(function(Input)
                 if PopupOpen and IsPointerInput(Input) then
-                    -- Intentionally empty: this consumes clicks outside the popup so background controls are blocked.
+                    -- Blocker is disabled while popup is open to avoid stealing input from picker controls.
                 end
             end);
 
