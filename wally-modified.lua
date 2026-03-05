@@ -3,7 +3,7 @@ local RunService = game:GetService("RunService");
 local Debris = game:GetService("Debris");
 local CoreGui = game:GetService("CoreGui");
 
-local Library = {Count = 0, Queue = {}, Callbacks = {}, RainbowTable = {}, Toggled = true, Binds = {}};
+local Library = {Count = 0, Queue = {}, Callbacks = {}, RainbowTable = {}, Toggled = true, Binds = {}, Build = "2026-03-05.3"};
 local Defaults; do
     local Dragger = {}; do
         function Dragger.New(Frame)
@@ -76,7 +76,7 @@ local Defaults; do
                 ZIndex = 3;
                 Library:Create('TextLabel', {
                     Text = Name;
-                    Size = UDim2.new(1, -10, 1, 0);
+                    Size = UDim2.new(1, -45, 1, 0);
                     Position = UDim2.new(0, 5, 0, 0);
                     BackgroundTransparency = 1;
                     Font = Enum.Font.Code;
@@ -433,12 +433,10 @@ local Defaults; do
                     return nil;
                 end
 
-                local Ok, Item = pcall(function()
-                    return EnumType[Name];
-                end);
-
-                if Ok then
-                    return Item;
+                for _, EnumItem in next, EnumType:GetEnumItems() do
+                    if EnumItem.Name == Name then
+                        return EnumItem;
+                    end
                 end
                 return nil;
             end
@@ -2216,7 +2214,7 @@ local Defaults; do
             end
         end
 
-        local IsAutoScaleClass = (ClassName == "TextLabel" or ClassName == "TextButton");
+        local IsAutoScaleClass = (ClassName == "TextLabel" or ClassName == "TextButton" or ClassName == "TextBox");
         if IsAutoScaleClass then
             local AutoScaleEnabled = true;
             if Library.Options and Library.Options.autoscaletext ~= nil then
@@ -2226,7 +2224,9 @@ local Defaults; do
             local ShouldScale = (Data.TextScaled ~= nil and Data.TextScaled) or (Data.TextScaled == nil and AutoScaleEnabled);
             if ShouldScale then
                 Obj.TextScaled = true;
-                Obj.TextTruncate = Enum.TextTruncate.AtEnd;
+                if ClassName ~= "TextBox" then
+                    Obj.TextTruncate = Enum.TextTruncate.AtEnd;
+                end
 
                 local DesiredMax = math.floor((tonumber(Data.TextSize) or tonumber(Obj.TextSize) or (Library.Options and Library.Options.fontsize) or 17) + 0.5);
                 local DesiredMin = math.floor((tonumber(Library.Options and Library.Options.mintextsize) or 10) + 0.5);
@@ -2344,12 +2344,10 @@ local Defaults; do
                 return nil;
             end
 
-            local Ok, Item = pcall(function()
-                return EnumType[Name];
-            end);
-
-            if Ok then
-                return Item;
+            for _, EnumItem in next, EnumType:GetEnumItems() do
+                if EnumItem.Name == Name then
+                    return EnumItem;
+                end
             end
             return nil;
         end
