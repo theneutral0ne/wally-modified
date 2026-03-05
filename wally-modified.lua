@@ -19,7 +19,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.30",
+    Build = "2026-03-05.31",
     BindDebug = false
 };
 local Defaults; do
@@ -1046,10 +1046,10 @@ local Defaults; do
             end
             local DefaultTransparency = math.clamp(tonumber(Options.transparency or Options.alpha or 0) or 0, 0, 1);
 
-            local PickerSize = math.clamp(tonumber(Options.size) or 90, 70, 130);
+            local PickerSize = math.clamp(tonumber(Options.size) or 120, 90, 180);
             local WheelImage = Options.wheelImage or "rbxassetid://6020299385";
             local WheelRadiusScale = math.clamp(tonumber(Options.wheelRadiusScale) or 1, 0.6, 1);
-            local WheelOutsidePadding = math.max(0, tonumber(Options.wheelOutsidePadding) or 0);
+            local WheelOutsidePadding = math.max(0, tonumber(Options.wheelOutsidePadding) or 4);
             local WheelTop = 6;
             local ShadeTop = WheelTop + PickerSize + 6;
             local AlphaTop = ShadeTop + 20;
