@@ -19,7 +19,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.43",
+    Build = "2026-03-05.44",
     BindDebug = false
 };
 local Defaults; do
@@ -1661,7 +1661,8 @@ local Defaults; do
                     SafeX = (SafeX >= 0 and 1e-5 or -1e-5);
                 end
 
-                local Angle = math.atan(Offset.Y / SafeX) + (math.pi * 0.5);
+                -- Screen-space Y grows downward; invert Y so hue orientation matches the visible wheel.
+                local Angle = math.atan((-Offset.Y) / SafeX) + (math.pi * 0.5);
                 if Offset.X <= 0 then
                     Angle = Angle + math.pi;
                 end
