@@ -331,7 +331,10 @@ local EspColorPicker = MainWindow:ColorPicker("ESP Box Color", {
     transparencyflag = "EspTransparency",
     default = Color3.fromRGB(255, 80, 80),
     transparency = 0.2,
-    size = 92,
+    size = 150,
+    drag = true,
+    wheelRadiusScale = 1,
+    wheelOutsidePadding = 6,
 }, function()
     RefreshEspForAllPlayers()
 end)
