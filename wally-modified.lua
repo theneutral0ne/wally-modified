@@ -14,7 +14,7 @@ local Library = {
     Toggled = true,
     Binds = {},
     ToggleRegistry = {},
-    Build = "2026-03-05.13",
+    Build = "2026-03-05.14",
     BindDebug = false
 };
 local Defaults; do
@@ -3639,6 +3639,393 @@ local Defaults; do
 
     function Library:UpdateWindowOptions(NewOptions, ApplyNow)
         return self:SetWindowOptions(NewOptions, ApplyNow);
+    end
+
+    function Library:SettingsWindow(Options)
+        Options = Options or {};
+
+        local function TrimText(Value)
+            return tostring(Value or ""):gsub("^%s+", ""):gsub("%s+$", "");
+        end
+
+        local function EnsureColor(Value, Fallback)
+            if typeof(Value) == "Color3" then
+                return Value;
+            end
+            return Fallback;
+        end
+
+        local CurrentOptions = self:GetWindowOptions();
+        local ThemeState = {
+            ToggleStyle = (string.lower(tostring(CurrentOptions.togglestyle or "checkmark")) == "fill" and "fill" or "checkmark");
+            ItemSpacing = math.clamp(tonumber(CurrentOptions.itemspacing) or 0, 0, 40);
+            ToggleOnColor = EnsureColor(CurrentOptions.toggleoncolor, Color3.fromRGB(0, 255, 140));
+            ToggleOffColor = EnsureColor(CurrentOptions.toggleoffcolor, Color3.fromRGB(35, 35, 35));
+            UnderlineMode = (CurrentOptions.underlinecolor == "rainbow" and "Rainbow" or "Solid");
+            UnderlineColor = EnsureColor(CurrentOptions.underlinecolor, Color3.fromRGB(0, 255, 140));
+            PresetName = tostring(Options.defaultPresetName or "Default");
+            SelectedPreset = "";
+        };
+
+        local SettingsWindow = self:CreateWindow(tostring(Options.title or "Wally Settings"), Options.windowOptions);
+
+        local PresetConfig = (type(Options.presets) == "table" and Options.presets) or {};
+        local PresetManager = self:CreatePresetManager({
+            location = ThemeState;
+            scriptKey = PresetConfig.scriptKey or Options.scriptKey;
+            rootFolder = PresetConfig.rootFolder or Options.rootFolder or "WallyModifiedWindowPresets";
+            extension = PresetConfig.extension or Options.extension or ".json";
+            clearOnLoad = (PresetConfig.clearOnLoad ~= false);
+            separateByPlace = (PresetConfig.separateByPlace ~= false);
+        });
+
+        local IsSyncing = false;
+        local ToggleStyleDropdown;
+        local ItemSpacingSlider;
+        local UnderlineModeDropdown;
+        local ToggleOnColorPicker;
+        local ToggleOffColorPicker;
+        local UnderlineColorPicker;
+
+        local function ApplyThemeState()
+            if IsSyncing then
+                return;
+            end
+
+            local UnderlineValue = ThemeState.UnderlineColor;
+            if ThemeState.UnderlineMode == "Rainbow" then
+                UnderlineValue = "rainbow";
+            end
+
+            self:SetWindowOptions({
+                togglestyle = string.lower(tostring(ThemeState.ToggleStyle or "checkmark"));
+                itemspacing = math.clamp(tonumber(ThemeState.ItemSpacing) or 0, 0, 40);
+                toggleoncolor = EnsureColor(ThemeState.ToggleOnColor, Color3.fromRGB(0, 255, 140));
+                toggleoffcolor = EnsureColor(ThemeState.ToggleOffColor, Color3.fromRGB(35, 35, 35));
+                underlinecolor = UnderlineValue;
+                notifyaccentcolor = (UnderlineValue == "rainbow" and Color3.fromRGB(0, 255, 140) or EnsureColor(ThemeState.UnderlineColor, Color3.fromRGB(0, 255, 140)));
+            }, true);
+        end
+
+        local function SyncControlsFromState()
+            IsSyncing = true;
+            if ToggleStyleDropdown then
+                ToggleStyleDropdown:Set(ThemeState.ToggleStyle, false);
+            end
+            if UnderlineModeDropdown then
+                UnderlineModeDropdown:Set(ThemeState.UnderlineMode, false);
+            end
+            if ItemSpacingSlider then
+                ItemSpacingSlider:Set(ThemeState.ItemSpacing);
+            end
+            if ToggleOnColorPicker then
+                ToggleOnColorPicker:Set(ThemeState.ToggleOnColor, false);
+            end
+            if ToggleOffColorPicker then
+                ToggleOffColorPicker:Set(ThemeState.ToggleOffColor, false);
+            end
+            if UnderlineColorPicker then
+                UnderlineColorPicker:Set(ThemeState.UnderlineColor, false);
+            end
+            IsSyncing = false;
+            ApplyThemeState();
+        end
+
+        SettingsWindow:Section("Window Theme");
+
+        ToggleStyleDropdown = SettingsWindow:Dropdown("Toggle Style", {
+            location = ThemeState;
+            flag = "ToggleStyle";
+            list = (ThemeState.ToggleStyle == "fill" and {"fill", "checkmark"} or {"checkmark", "fill"});
+        }, function()
+            ApplyThemeState();
+        end);
+
+        ItemSpacingSlider = SettingsWindow:Slider("Item Spacing", {
+            location = ThemeState;
+            flag = "ItemSpacing";
+            min = 0;
+            max = 16;
+            default = ThemeState.ItemSpacing;
+        }, function()
+            ApplyThemeState();
+        end);
+
+        ToggleOnColorPicker = SettingsWindow:ColorPicker("Toggle On Color", {
+            location = ThemeState;
+            flag = "ToggleOnColor";
+            default = ThemeState.ToggleOnColor;
+            size = 84;
+        }, function()
+            ApplyThemeState();
+        end);
+
+        ToggleOffColorPicker = SettingsWindow:ColorPicker("Toggle Off Color", {
+            location = ThemeState;
+            flag = "ToggleOffColor";
+            default = ThemeState.ToggleOffColor;
+            size = 84;
+        }, function()
+            ApplyThemeState();
+        end);
+
+        UnderlineModeDropdown = SettingsWindow:Dropdown("Underline Mode", {
+            location = ThemeState;
+            flag = "UnderlineMode";
+            list = (ThemeState.UnderlineMode == "Rainbow" and {"Rainbow", "Solid"} or {"Solid", "Rainbow"});
+        }, function()
+            ApplyThemeState();
+        end);
+
+        UnderlineColorPicker = SettingsWindow:ColorPicker("Underline Color", {
+            location = ThemeState;
+            flag = "UnderlineColor";
+            default = ThemeState.UnderlineColor;
+            size = 84;
+        }, function()
+            if ThemeState.UnderlineMode ~= "Rainbow" then
+                ApplyThemeState();
+            end
+        end);
+
+        SettingsWindow:Button("Reset Theme", function()
+            ThemeState.ToggleStyle = "checkmark";
+            ThemeState.ItemSpacing = 0;
+            ThemeState.ToggleOnColor = Color3.fromRGB(0, 255, 140);
+            ThemeState.ToggleOffColor = Color3.fromRGB(35, 35, 35);
+            ThemeState.UnderlineMode = "Rainbow";
+            ThemeState.UnderlineColor = Color3.fromRGB(0, 255, 140);
+            SyncControlsFromState();
+            self:Notify("Wally Settings", "Theme reset.", 2);
+        end);
+
+        SettingsWindow:Section("Theme Presets");
+        local PresetInfoLabel = SettingsWindow:Label("Preset Key: " .. tostring(PresetManager:GetScriptKey()), {
+            textSize = 16;
+            textColor = Color3.fromRGB(210, 210, 210);
+            bgColor = Color3.fromRGB(33, 33, 33);
+            borderColor = Color3.fromRGB(60, 60, 60);
+        });
+        local PresetStateLabel = SettingsWindow:Label("Preset State: Idle", {
+            textSize = 16;
+            textColor = Color3.fromRGB(220, 220, 220);
+            bgColor = Color3.fromRGB(33, 33, 33);
+            borderColor = Color3.fromRGB(60, 60, 60);
+        });
+
+        local PresetNameBox = SettingsWindow:Box("Preset Name", {
+            location = ThemeState;
+            flag = "PresetName";
+            type = "string";
+            default = ThemeState.PresetName;
+        });
+
+        local PresetDropdown = SettingsWindow:Dropdown("Saved Presets", {
+            location = ThemeState;
+            flag = "SelectedPreset";
+            list = {"(none)"};
+        }, function(SelectedName)
+            if SelectedName and SelectedName ~= "(none)" then
+                ThemeState.PresetName = tostring(SelectedName);
+                PresetNameBox.Text = tostring(SelectedName);
+            end
+        end);
+
+        local function BuildThemePayload()
+            return {
+                ToggleStyle = ThemeState.ToggleStyle;
+                ItemSpacing = ThemeState.ItemSpacing;
+                ToggleOnColor = EnsureColor(ThemeState.ToggleOnColor, Color3.fromRGB(0, 255, 140));
+                ToggleOffColor = EnsureColor(ThemeState.ToggleOffColor, Color3.fromRGB(35, 35, 35));
+                UnderlineMode = ThemeState.UnderlineMode;
+                UnderlineColor = EnsureColor(ThemeState.UnderlineColor, Color3.fromRGB(0, 255, 140));
+            };
+        end
+
+        local function RefreshPresetDropdown(PreferredName)
+            local Names, ListError = PresetManager:List();
+            if type(Names) ~= "table" then
+                Names = {};
+            end
+
+            local DropdownData = {};
+            for _, NameData in next, Names do
+                table.insert(DropdownData, tostring(NameData));
+            end
+            if #DropdownData == 0 then
+                DropdownData = {"(none)"};
+            end
+
+            PresetDropdown:Refresh(DropdownData);
+
+            local Wanted = TrimText(PreferredName);
+            if Wanted == "" then
+                Wanted = TrimText(ThemeState.SelectedPreset);
+            end
+
+            if Wanted ~= "" and Wanted ~= "(none)" and table.find(DropdownData, Wanted) then
+                PresetDropdown:Set(Wanted, false);
+            elseif #Names > 0 then
+                Wanted = DropdownData[1];
+                PresetDropdown:Set(Wanted, false);
+            else
+                Wanted = "";
+            end
+
+            if Wanted ~= "" and Wanted ~= "(none)" then
+                ThemeState.SelectedPreset = Wanted;
+                ThemeState.PresetName = Wanted;
+                PresetNameBox.Text = Wanted;
+            else
+                ThemeState.SelectedPreset = "";
+            end
+
+            if ListError then
+                PresetStateLabel:Refresh("Preset State: List failed (" .. tostring(ListError) .. ")");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+            else
+                PresetStateLabel:Refresh("Preset State: " .. tostring(#Names) .. " preset(s) found");
+                PresetStateLabel:SetColor(Color3.fromRGB(175, 255, 175));
+            end
+        end
+
+        if not PresetManager:IsAvailable() then
+            PresetStateLabel:Refresh("Preset State: writefile/readfile API unavailable");
+            PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+        else
+            RefreshPresetDropdown();
+        end
+
+        SettingsWindow:Button("Save Preset", function()
+            if not PresetManager:IsAvailable() then
+                PresetStateLabel:Refresh("Preset State: Save failed (file APIs unavailable)");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+                return;
+            end
+
+            local PresetName = TrimText(ThemeState.PresetName);
+            if PresetName == "" then
+                PresetStateLabel:Refresh("Preset State: Save failed (preset name is empty)");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+                return;
+            end
+
+            local OkSave, SaveResult = PresetManager:Save(PresetName, BuildThemePayload());
+            if not OkSave then
+                PresetStateLabel:Refresh("Preset State: Save failed (" .. tostring(SaveResult) .. ")");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+                return;
+            end
+
+            RefreshPresetDropdown(SaveResult);
+            PresetStateLabel:Refresh("Preset State: Saved \"" .. tostring(SaveResult) .. "\"");
+            PresetStateLabel:SetColor(Color3.fromRGB(175, 255, 175));
+            self:Notify("Wally Settings", "Saved preset: " .. tostring(SaveResult), 2);
+        end);
+
+        SettingsWindow:Button("Load Preset", function()
+            if not PresetManager:IsAvailable() then
+                PresetStateLabel:Refresh("Preset State: Load failed (file APIs unavailable)");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+                return;
+            end
+
+            local PresetName = TrimText(ThemeState.SelectedPreset);
+            if PresetName == "" or PresetName == "(none)" then
+                PresetName = TrimText(ThemeState.PresetName);
+            end
+            if PresetName == "" or PresetName == "(none)" then
+                PresetStateLabel:Refresh("Preset State: Load failed (no preset selected)");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+                return;
+            end
+
+            local Buffer = {};
+            local OkLoad, DataOrError = PresetManager:Load(PresetName, Buffer, true);
+            if not OkLoad then
+                PresetStateLabel:Refresh("Preset State: Load failed (" .. tostring(DataOrError) .. ")");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+                return;
+            end
+
+            for Key, Value in next, DataOrError do
+                ThemeState[Key] = Value;
+            end
+
+            ThemeState.ToggleStyle = (string.lower(tostring(ThemeState.ToggleStyle or "checkmark")) == "fill" and "fill" or "checkmark");
+            ThemeState.ItemSpacing = math.clamp(tonumber(ThemeState.ItemSpacing) or 0, 0, 40);
+            ThemeState.ToggleOnColor = EnsureColor(ThemeState.ToggleOnColor, Color3.fromRGB(0, 255, 140));
+            ThemeState.ToggleOffColor = EnsureColor(ThemeState.ToggleOffColor, Color3.fromRGB(35, 35, 35));
+            ThemeState.UnderlineMode = (ThemeState.UnderlineMode == "Rainbow" and "Rainbow" or "Solid");
+            ThemeState.UnderlineColor = EnsureColor(ThemeState.UnderlineColor, Color3.fromRGB(0, 255, 140));
+
+            SyncControlsFromState();
+            RefreshPresetDropdown(PresetName);
+            PresetStateLabel:Refresh("Preset State: Loaded \"" .. tostring(PresetName) .. "\"");
+            PresetStateLabel:SetColor(Color3.fromRGB(175, 255, 175));
+            self:Notify("Wally Settings", "Loaded preset: " .. tostring(PresetName), 2);
+        end);
+
+        SettingsWindow:Button("Delete Preset", function()
+            if not PresetManager:IsAvailable() then
+                PresetStateLabel:Refresh("Preset State: Delete failed (file APIs unavailable)");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+                return;
+            end
+
+            local PresetName = TrimText(ThemeState.SelectedPreset);
+            if PresetName == "" or PresetName == "(none)" then
+                PresetName = TrimText(ThemeState.PresetName);
+            end
+            if PresetName == "" or PresetName == "(none)" then
+                PresetStateLabel:Refresh("Preset State: Delete failed (no preset selected)");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+                return;
+            end
+
+            local OkDelete, DeleteError = PresetManager:Delete(PresetName);
+            if not OkDelete then
+                PresetStateLabel:Refresh("Preset State: Delete failed (" .. tostring(DeleteError) .. ")");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+                return;
+            end
+
+            RefreshPresetDropdown();
+            PresetStateLabel:Refresh("Preset State: Deleted \"" .. tostring(PresetName) .. "\"");
+            PresetStateLabel:SetColor(Color3.fromRGB(175, 255, 175));
+            self:Notify("Wally Settings", "Deleted preset: " .. tostring(PresetName), 2);
+        end);
+
+        SettingsWindow:Button("Refresh Presets", function()
+            RefreshPresetDropdown();
+        end);
+
+        SyncControlsFromState();
+        PresetInfoLabel:Refresh("Preset Key: " .. tostring(PresetManager:GetScriptKey()));
+
+        return {
+            Window = SettingsWindow;
+            Theme = ThemeState;
+            PresetManager = PresetManager;
+            Apply = ApplyThemeState;
+            Sync = SyncControlsFromState;
+            RefreshPresets = RefreshPresetDropdown;
+        };
+    end
+
+    function Library:SettingsWindows(Options)
+        local SelfRef = self;
+        local ActualOptions = Options;
+
+        if (type(SelfRef) ~= "table")
+            or (type(SelfRef.CreateWindow) ~= "function")
+            or (type(SelfRef.SettingsWindow) ~= "function")
+        then
+            ActualOptions = SelfRef;
+            SelfRef = Library;
+        end
+
+        return SelfRef:SettingsWindow(ActualOptions);
     end
 		
     function Library:CreateWindow(Name, Options)
