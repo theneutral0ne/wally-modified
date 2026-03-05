@@ -18,7 +18,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.17",
+    Build = "2026-03-05.18",
     BindDebug = false
 };
 local Defaults; do
@@ -1047,7 +1047,7 @@ local Defaults; do
 
             local PickerSize = math.clamp(tonumber(Options.size) or 90, 70, 130);
             local WheelImage = Options.wheelImage or "rbxassetid://6020299385";
-            local WheelOutsidePadding = math.max(0, tonumber(Options.wheelOutsidePadding) or 2);
+            local WheelOutsidePadding = math.max(0, tonumber(Options.wheelOutsidePadding) or 8);
             local WheelTop = 6;
             local ShadeTop = WheelTop + PickerSize + 6;
             local AlphaTop = ShadeTop + 20;
@@ -1575,10 +1575,6 @@ local Defaults; do
 
             Wheel.InputBegan:Connect(function(Input)
                 if PopupOpen and IsPointerInput(Input) then
-                    local Pointer = UserInputService:GetMouseLocation();
-                    if not IsPointerInsideWheel(Pointer, 0) then
-                        return;
-                    end
                     WheelDragging = true;
                     UpdateFromWheelMouse();
                 end
