@@ -4,7 +4,6 @@ local Debris = game:GetService("Debris");
 local CoreGui = game:GetService("CoreGui");
 local HttpService = game:GetService("HttpService");
 local TextService = game:GetService("TextService");
-local GuiService = game:GetService("GuiService");
 
 local Library = {
     Count = 0,
@@ -19,7 +18,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.27",
+    Build = "2026-03-05.24",
     BindDebug = false
 };
 local Defaults; do
@@ -1088,10 +1087,6 @@ local Defaults; do
             });
 
             local PopupParent = (Library.Container and Library.Container.Parent) or ResolveGuiParent();
-            local PopupScreenGui = PopupParent;
-            if not PopupScreenGui:IsA("ScreenGui") then
-                PopupScreenGui = PopupParent:FindFirstAncestorOfClass("ScreenGui");
-            end
             local PopupData = Library:Create('Frame', {
                 Name = 'ColorPickerPopup';
                 Visible = false;
@@ -1276,15 +1271,12 @@ local Defaults; do
                 });
             });
 
-            local ModalBlocker = Library:Create('TextButton', {
+            local ModalBlocker = Library:Create('Frame', {
                 Name = 'ColorPickerModalBlocker';
                 Visible = false;
-                Text = "";
-                AutoButtonColor = false;
                 BackgroundTransparency = 1;
                 BorderSizePixel = 0;
                 Active = true;
-                Selectable = false;
                 Size = UDim2.new(1, 0, 1, 0);
                 Position = UDim2.new(0, 0, 0, 0);
                 ZIndex = 39;
@@ -1385,23 +1377,11 @@ local Defaults; do
                 return Radius * WheelRadiusScale;
             end
 
-            local function ToGuiPosition(ScreenPoint)
-                local Point = ScreenPoint;
-                if PopupScreenGui and (not PopupScreenGui.IgnoreGuiInset) then
-                    local TopLeftInset = select(1, GuiService:GetGuiInset());
-                    if typeof(TopLeftInset) == "Vector2" then
-                        Point = Point - TopLeftInset;
-                    end
-                end
-                return Point;
-            end
-
             local function GetPointerPosition(InputObject)
-                if InputObject and InputObject.UserInputType == Enum.UserInputType.Touch and typeof(InputObject.Position) == "Vector3" then
-                    return ToGuiPosition(Vector2.new(InputObject.Position.X, InputObject.Position.Y));
+                if InputObject and typeof(InputObject.Position) == "Vector3" then
+                    return Vector2.new(InputObject.Position.X, InputObject.Position.Y);
                 end
-
-                return ToGuiPosition(UserInputService:GetMouseLocation());
+                return UserInputService:GetMouseLocation();
             end
 
             local function HueToWheelAngle(HueValue)
@@ -1690,6 +1670,12 @@ local Defaults; do
                 BeginWheelDrag(Input);
             end);
 
+            ModalBlocker.InputBegan:Connect(function(Input)
+                if PopupOpen and IsPointerInput(Input) then
+                    SetPopupVisible(false, false);
+                end
+            end);
+
             ShadeBar.InputBegan:Connect(function(Input)
                 BeginShadeDrag(Input);
             end);
@@ -1733,15 +1719,6 @@ local Defaults; do
                     if Input == ActiveAlphaInput or (Input.UserInputType == Enum.UserInputType.MouseButton1 and ActiveAlphaInput and ActiveAlphaInput.UserInputType == Enum.UserInputType.MouseButton1) then
                         AlphaDragging = false;
                         ActiveAlphaInput = nil;
-                    end
-                end
-            end);
-
-            ModalBlocker.InputBegan:Connect(function(Input)
-                if PopupOpen and IsPointerInput(Input) then
-                    local PointerPos = GetPointerPosition(Input);
-                    if (not IsPointInsideGui(PopupData, PointerPos)) and (not IsPointInsideGui(Preview, PointerPos)) then
-                        SetPopupVisible(false, false);
                     end
                 end
             end);
