@@ -3,7 +3,7 @@ local RunService = game:GetService("RunService");
 local Debris = game:GetService("Debris");
 local CoreGui = game:GetService("CoreGui");
 
-local Library = {Count = 0, Queue = {}, Callbacks = {}, RainbowTable = {}, Toggled = true, Binds = {}, Build = "2026-03-05.3"};
+local Library = {Count = 0, Queue = {}, Callbacks = {}, RainbowTable = {}, Toggled = true, Binds = {}, Build = "2026-03-05.4", BindDebug = true};
 local Defaults; do
     local Dragger = {}; do
         function Dragger.New(Frame)
@@ -442,6 +442,23 @@ local Defaults; do
                 return nil;
             end
 
+            local function DebugBindLog(Message)
+                if Library.BindDebug then
+                    warn("[Wally Modified][BindDebug][" .. tostring(Flag ~= "" and Flag or Name) .. "] " .. tostring(Message));
+                end
+            end
+
+            local function DetectPressedKeyboardKey()
+                for _, KeyCode in next, Enum.KeyCode:GetEnumItems() do
+                    if KeyCode ~= Enum.KeyCode.Unknown and (not Banned[KeyCode.Name]) and (not string.find(KeyCode.Name, "MouseButton", 1, true)) then
+                        if UserInputService:IsKeyDown(KeyCode) then
+                            return KeyCode;
+                        end
+                    end
+                end
+                return nil;
+            end
+
             local function GetBindingFromInputObject(InputObject)
                 if typeof(InputObject) ~= "InputObject" then
                     return nil;
@@ -451,6 +468,12 @@ local Defaults; do
                     local KeyCode = InputObject.KeyCode;
                     if KeyCode and KeyCode ~= Enum.KeyCode.Unknown and (not Banned[KeyCode.Name]) then
                         return KeyCode;
+                    end
+
+                    local FallbackKey = DetectPressedKeyboardKey();
+                    if FallbackKey then
+                        DebugBindLog("Fallback detected key via IsKeyDown: " .. tostring(FallbackKey.Name));
+                        return FallbackKey;
                     end
                     return nil;
                 end
@@ -577,13 +600,22 @@ local Defaults; do
 
                     ButtonData.Text = "..."
                     while Library.Binding do
-                        local InputObject = UserInputService.InputBegan:Wait();
+                        local InputObject, Gpe = UserInputService.InputBegan:Wait();
+                        DebugBindLog(string.format(
+                            "Captured Input | UserInputType=%s | KeyCode=%s | Gpe=%s",
+                            tostring(InputObject.UserInputType),
+                            tostring(InputObject.KeyCode),
+                            tostring(Gpe)
+                        ));
+
                         if InputObject.UserInputType == Enum.UserInputType.Keyboard or InputObject.UserInputType == Enum.UserInputType.TextInput then
                             if InputObject.KeyCode == Enum.KeyCode.Escape then
+                                DebugBindLog("Rebind cancelled with Escape");
                                 break;
                             end
                             if InputObject.KeyCode == Enum.KeyCode.Backspace or InputObject.KeyCode == Enum.KeyCode.Delete then
                                 Location[Flag] = nil;
+                                DebugBindLog("Binding cleared with Backspace/Delete");
                                 break;
                             end
                         end
@@ -591,7 +623,10 @@ local Defaults; do
                         local Normalized = GetBindingFromInputObject(InputObject);
                         if Normalized then
                             Location[Flag] = Normalized;
+                            DebugBindLog("Binding changed to " .. tostring(Normalized.Name));
                             break;
+                        else
+                            DebugBindLog("Input ignored (not a bindable key/mouse)");
                         end
                     end
                 end);
@@ -2421,6 +2456,15 @@ local Defaults; do
             for Index, BindsData in next, Library.Binds do
                 local RealBinding = BindsData.Location[Index];
                 if RealBinding and IsReallyPressed(RealBinding, Input) then
+                    if Library.BindDebug then
+                        local BindingName = "Unknown";
+                        if typeof(RealBinding) == "EnumItem" then
+                            BindingName = RealBinding.Name;
+                        else
+                            BindingName = tostring(RealBinding);
+                        end
+                        warn("[Wally Modified][BindDebug][" .. tostring(Index) .. "] Triggered by " .. tostring(Input.KeyCode.Name) .. " (bound to " .. tostring(BindingName) .. ")");
+                    end
                     BindsData.Callback()
                 end
             end
