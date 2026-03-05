@@ -18,7 +18,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.23",
+    Build = "2026-03-05.24",
     BindDebug = false
 };
 local Defaults; do
@@ -1316,7 +1316,6 @@ local Defaults; do
             local ActiveWheelInput;
             local ActiveShadeInput;
             local ActiveAlphaInput;
-            local DragRenderConnection;
 
             local Hue, Saturation, Value = Default:ToHSV();
             local CurrentColor = Default;
@@ -1530,10 +1529,6 @@ local Defaults; do
                 ActiveWheelInput = nil;
                 ActiveShadeInput = nil;
                 ActiveAlphaInput = nil;
-                if DragRenderConnection then
-                    DragRenderConnection:Disconnect();
-                    DragRenderConnection = nil;
-                end
 
                 if Library.ActiveColorPopup == PopupData then
                     Library.ActiveColorPopup = nil;
@@ -1599,39 +1594,6 @@ local Defaults; do
                 return InputObject.UserInputType == Enum.UserInputType.MouseButton1 or InputObject.UserInputType == Enum.UserInputType.Touch;
             end
 
-            local function StartDragTracking()
-                if DragRenderConnection then
-                    return;
-                end
-
-                DragRenderConnection = RunService.RenderStepped:Connect(function()
-                    if (not PopupOpen) then
-                        return;
-                    end
-
-                    local PointerPos = GetPointerPosition();
-                    if WheelDragging then
-                        UpdateFromWheelPointer(PointerPos);
-                    end
-                    if ShadeDragging then
-                        UpdateFromShadePointer(PointerPos);
-                    end
-                    if AlphaDragging then
-                        UpdateFromAlphaPointer(PointerPos);
-                    end
-                end);
-            end
-
-            local function StopDragTrackingIfIdle()
-                if WheelDragging or ShadeDragging or AlphaDragging then
-                    return;
-                end
-                if DragRenderConnection then
-                    DragRenderConnection:Disconnect();
-                    DragRenderConnection = nil;
-                end
-            end
-
             local function BeginWheelDrag(Input)
                 if (not PopupOpen) or (not IsPointerInput(Input)) then
                     return;
@@ -1655,7 +1617,6 @@ local Defaults; do
                 ActiveShadeInput = nil;
                 ActiveAlphaInput = nil;
                 UpdateFromWheelPointer(PointerPos);
-                StartDragTracking();
             end
 
             local function BeginShadeDrag(Input)
@@ -1675,7 +1636,6 @@ local Defaults; do
                 ActiveShadeInput = Input;
                 ActiveAlphaInput = nil;
                 UpdateFromShadePointer(PointerPos);
-                StartDragTracking();
             end
 
             local function BeginAlphaDrag(Input)
@@ -1695,7 +1655,6 @@ local Defaults; do
                 ActiveShadeInput = nil;
                 ActiveAlphaInput = Input;
                 UpdateFromAlphaPointer(PointerPos);
-                StartDragTracking();
             end
 
             if Preview then
@@ -1713,10 +1672,7 @@ local Defaults; do
 
             ModalBlocker.InputBegan:Connect(function(Input)
                 if PopupOpen and IsPointerInput(Input) then
-                    local PointerPos = GetPointerPosition(Input);
-                    if (not IsPointInsideGui(PopupData, PointerPos)) and (not IsPointInsideGui(Preview, PointerPos)) then
-                        SetPopupVisible(false, false);
-                    end
+                    SetPopupVisible(false, false);
                 end
             end);
 
@@ -1764,7 +1720,6 @@ local Defaults; do
                         AlphaDragging = false;
                         ActiveAlphaInput = nil;
                     end
-                    StopDragTrackingIfIdle();
                 end
             end);
 
