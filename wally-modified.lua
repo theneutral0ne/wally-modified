@@ -17,7 +17,7 @@ local Library = {
     FlagLocations = {},
     FlagLocationLookup = {},
     RegisteredFlags = {},
-    Build = "2026-03-05.15",
+    Build = "2026-03-05.16",
     BindDebug = false
 };
 local Defaults; do
@@ -3880,10 +3880,17 @@ local Defaults; do
         local SettingsWindow = self:CreateWindow(tostring(Options.title or "Wally Settings"), Options.windowOptions);
 
         local PresetConfig = (type(Options.presets) == "table" and Options.presets) or {};
-        local PresetManager = self:CreatePresetManager({
-            location = ThemeState;
-            scriptKey = PresetConfig.scriptKey or Options.scriptKey;
-            rootFolder = PresetConfig.rootFolder or Options.rootFolder or "WallyModifiedWindowPresets";
+        local ScriptFolderName = tostring(
+            PresetConfig.scriptFolder
+            or Options.scriptFolder
+            or PresetConfig.folder
+            or Options.folder
+            or PresetConfig.rootFolder
+            or Options.rootFolder
+            or "WallyModifiedScript"
+        );
+        local PresetManager = self:CreateScriptPresetManager("Presets", {
+            rootFolder = ScriptFolderName;
             extension = PresetConfig.extension or Options.extension or ".json";
             clearOnLoad = (PresetConfig.clearOnLoad ~= false);
             separateByPlace = (PresetConfig.separateByPlace ~= false);
@@ -4009,8 +4016,8 @@ local Defaults; do
             self:Notify("Wally Settings", "Theme reset.", 2);
         end);
 
-        SettingsWindow:Section("Theme Presets");
-        local PresetInfoLabel = SettingsWindow:Label("Preset Key: " .. tostring(PresetManager:GetScriptKey()), {
+        SettingsWindow:Section("Script Presets");
+        local PresetInfoLabel = SettingsWindow:Label("Preset Folder: " .. tostring(PresetManager:GetFolder()), {
             textSize = 16;
             textColor = Color3.fromRGB(210, 210, 210);
             bgColor = Color3.fromRGB(33, 33, 33);
@@ -4040,17 +4047,6 @@ local Defaults; do
                 PresetNameBox.Text = tostring(SelectedName);
             end
         end);
-
-        local function BuildThemePayload()
-            return {
-                ToggleStyle = ThemeState.ToggleStyle;
-                ItemSpacing = ThemeState.ItemSpacing;
-                ToggleOnColor = EnsureColor(ThemeState.ToggleOnColor, Color3.fromRGB(0, 255, 140));
-                ToggleOffColor = EnsureColor(ThemeState.ToggleOffColor, Color3.fromRGB(35, 35, 35));
-                UnderlineMode = ThemeState.UnderlineMode;
-                UnderlineColor = EnsureColor(ThemeState.UnderlineColor, Color3.fromRGB(0, 255, 140));
-            };
-        end
 
         local function RefreshPresetDropdown(PreferredName)
             local Names, ListError = PresetManager:List();
@@ -4120,7 +4116,7 @@ local Defaults; do
                 return;
             end
 
-            local OkSave, SaveResult = PresetManager:Save(PresetName, BuildThemePayload());
+            local OkSave, SaveResult = PresetManager:Save(PresetName);
             if not OkSave then
                 PresetStateLabel:Refresh("Preset State: Save failed (" .. tostring(SaveResult) .. ")");
                 PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
@@ -4150,16 +4146,11 @@ local Defaults; do
                 return;
             end
 
-            local Buffer = {};
-            local OkLoad, DataOrError = PresetManager:Load(PresetName, Buffer, true);
+            local OkLoad, DataOrError = PresetManager:Load(PresetName, nil, true);
             if not OkLoad then
                 PresetStateLabel:Refresh("Preset State: Load failed (" .. tostring(DataOrError) .. ")");
                 PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
                 return;
-            end
-
-            for Key, Value in next, DataOrError do
-                ThemeState[Key] = Value;
             end
 
             ThemeState.ToggleStyle = (string.lower(tostring(ThemeState.ToggleStyle or "checkmark")) == "fill" and "fill" or "checkmark");
@@ -4211,7 +4202,7 @@ local Defaults; do
         end);
 
         SyncControlsFromState();
-        PresetInfoLabel:Refresh("Preset Key: " .. tostring(PresetManager:GetScriptKey()));
+        PresetInfoLabel:Refresh("Preset Folder: " .. tostring(PresetManager:GetFolder()));
 
         return {
             Window = SettingsWindow;
