@@ -492,7 +492,7 @@ UtilityWindow:Button("Box Return Demo (Set JumpPower TextBox)", function()
     StateLabel:Refresh("State: JumpPower set through Box return object")
 end)
 
-workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
     CleanupRemovedPlayers()
 end)
 
