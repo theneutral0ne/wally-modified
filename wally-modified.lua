@@ -5,7 +5,7 @@ local CoreGui = game:GetService("CoreGui");
 local HttpService = game:GetService("HttpService");
 local TextService = game:GetService("TextService");
 
-local Library = {Count = 0, Queue = {}, Callbacks = {}, RainbowTable = {}, Toggled = true, Binds = {}, Build = "2026-03-05.10", BindDebug = false};
+local Library = {Count = 0, Queue = {}, Callbacks = {}, RainbowTable = {}, Toggled = true, Binds = {}, Build = "2026-03-05.11", BindDebug = false};
 local Defaults; do
     local Dragger = {}; do
         function Dragger.New(Frame)
@@ -170,6 +170,8 @@ local Defaults; do
                 container = ContainerData;
                 ListData = ListLayout;
                 list = ListLayout;
+                options = Options;
+                Options = Options;
                 toggled = true;
                 flags   = {};
                 OrderData = 0;
@@ -233,10 +235,28 @@ local Defaults; do
         
         function Types:Toggle(Name, Options, Callback)
             Options = Options or {};
+            local WindowOptions = self.options or Library.Options or {};
             local Default  = Options.default or false;
             local Location = Options.location or self.flags;
             local Flag     = Options.flag or "";
             local Callback = Callback or function() end;
+            local ToggleStyle = string.lower(tostring(Options.togglestyle or Options.toggleStyle or WindowOptions.togglestyle or "checkmark"));
+            local IsFillStyle = (
+                ToggleStyle == "fill"
+                or ToggleStyle == "filled"
+                or ToggleStyle == "filledbox"
+                or ToggleStyle == "filledboxes"
+                or ToggleStyle == "filledboxs"
+                or ToggleStyle == "box"
+            );
+            local FillOnColor = Options.toggleoncolor or Options.oncolor or WindowOptions.toggleoncolor or WindowOptions.textcolor or Color3.fromRGB(255, 255, 255);
+            local FillOffColor = Options.toggleoffcolor or Options.offcolor or WindowOptions.toggleoffcolor or WindowOptions.bgcolor or Color3.fromRGB(35, 35, 35);
+            if typeof(FillOnColor) ~= "Color3" then
+                FillOnColor = WindowOptions.textcolor or Color3.fromRGB(255, 255, 255);
+            end
+            if typeof(FillOffColor) ~= "Color3" then
+                FillOffColor = WindowOptions.bgcolor or Color3.fromRGB(35, 35, 35);
+            end
             
             Location[Flag] = Default;
 
@@ -248,39 +268,51 @@ local Defaults; do
                     Name = Name;
                     Text = "\r" .. Name;
                     BackgroundTransparency = 1;
-                    TextColor3 = Library.Options.textcolor;
+                    TextColor3 = WindowOptions.textcolor;
                     Position = UDim2.new(0, 5, 0, 0);
                     Size     = UDim2.new(1, -5, 1, 0);
                     TextXAlignment = Enum.TextXAlignment.Left;
-                    Font = Library.Options.font;
-                    TextSize = Library.Options.fontsize;
-                    TextStrokeTransparency = Library.Options.textstroke;
-                    TextStrokeColor3 = Library.Options.strokecolor;
+                    Font = WindowOptions.font;
+                    TextSize = WindowOptions.fontsize;
+                    TextStrokeTransparency = WindowOptions.textstroke;
+                    TextStrokeColor3 = WindowOptions.strokecolor;
                     Library:Create('TextButton', {
-                        Text = (Location[Flag] and utf8.char(10003) or "");
-                        Font = Library.Options.font;
-                        TextSize = Library.Options.fontsize;
+                        Text = "";
+                        Font = WindowOptions.font;
+                        TextSize = WindowOptions.fontsize;
                         Name = 'Checkmark';
                         Size = UDim2.new(0, 20, 0, 20);
                         Position = UDim2.new(1, -25, 0, 4);
-                        TextColor3 = Library.Options.textcolor;
-                        BackgroundColor3 = Library.Options.bgcolor;
-                        BorderColor3 = Library.Options.bordercolor;
-                        TextStrokeTransparency = Library.Options.textstroke;
-                        TextStrokeColor3 = Library.Options.strokecolor;
+                        TextColor3 = WindowOptions.textcolor;
+                        BackgroundColor3 = WindowOptions.bgcolor;
+                        BorderColor3 = WindowOptions.bordercolor;
+                        TextStrokeTransparency = WindowOptions.textstroke;
+                        TextStrokeColor3 = WindowOptions.strokecolor;
                     })
                 });
                 Parent = self.container;
             });
+
+            local ToggleButton = CheckData:FindFirstChild(Name).Checkmark;
+            local function UpdateVisualState()
+                if IsFillStyle then
+                    ToggleButton.Text = "";
+                    ToggleButton.BackgroundColor3 = (Location[Flag] and FillOnColor or FillOffColor);
+                else
+                    ToggleButton.Text = (Location[Flag] and utf8.char(10003) or "");
+                    ToggleButton.BackgroundColor3 = WindowOptions.bgcolor;
+                end
+            end
                 
             local function Click(Temp)
                 Location[Flag] = not Location[Flag];
                 Callback(Location[Flag])
-                CheckData:FindFirstChild(Name).Checkmark.Text = Location[Flag] and utf8.char(10003) or "";
+                UpdateVisualState();
             end
 
-            CheckData:FindFirstChild(Name).Checkmark.MouseButton1Click:Connect(Click)
+            ToggleButton.MouseButton1Click:Connect(Click)
             Library.Callbacks[Flag] = Click;
+            UpdateVisualState();
 
             if Location[Flag] == true then
                 Callback(Location[Flag])
@@ -291,7 +323,10 @@ local Defaults; do
                 Set = function(self, b)
                     Location[Flag] = b;
                     Callback(Location[Flag])
-                    CheckData:FindFirstChild(Name).Checkmark.Text = Location[Flag] and utf8.char(10003) or "";
+                    UpdateVisualState();
+                end,
+                Get = function()
+                    return Location[Flag];
                 end
             }
         end
@@ -3240,7 +3275,7 @@ local Defaults; do
         return Manager;
     end
     
-	Defaults = {
+    Defaults = {
         topcolor       = Color3.fromRGB(30, 30, 30);
         titlecolor     = Color3.fromRGB(255, 255, 255);
         
@@ -3263,26 +3298,29 @@ local Defaults; do
 
         strokecolor    = Color3.fromRGB(0, 0, 0);
 
-	        textcolor      = Color3.fromRGB(255, 255, 255);
-	        titletextcolor = Color3.fromRGB(255, 255, 255);
+        textcolor      = Color3.fromRGB(255, 255, 255);
+        titletextcolor = Color3.fromRGB(255, 255, 255);
 
-	        autoscaletext = true;
-	        mintextsize = 10;
-	        itemspacing = 0;
+        autoscaletext = true;
+        mintextsize = 10;
+        itemspacing = 0;
+        togglestyle = "checkmark";
+        toggleoncolor = Color3.fromRGB(0, 255, 140);
+        toggleoffcolor = Color3.fromRGB(35, 35, 35);
 
-	        notifybgcolor = Color3.fromRGB(28, 28, 28);
-	        notifybordercolor = Color3.fromRGB(62, 62, 62);
-	        notifyaccentcolor = Color3.fromRGB(0, 255, 140);
-	        notifytitlecolor = Color3.fromRGB(255, 255, 255);
-	        notifytextcolor = Color3.fromRGB(230, 230, 230);
-	        notifywidth = 280;
-	        notifyduration = 4;
-	        notifymax = 6;
-	        notifypadding = 6;
+        notifybgcolor = Color3.fromRGB(28, 28, 28);
+        notifybordercolor = Color3.fromRGB(62, 62, 62);
+        notifyaccentcolor = Color3.fromRGB(0, 255, 140);
+        notifytitlecolor = Color3.fromRGB(255, 255, 255);
+        notifytextcolor = Color3.fromRGB(230, 230, 230);
+        notifywidth = 280;
+        notifyduration = 4;
+        notifymax = 6;
+        notifypadding = 6;
 
-	        placeholdercolor = Color3.fromRGB(255, 255, 255);
-	        titlestrokecolor = Color3.fromRGB(0, 0, 0);
-	    }
+        placeholdercolor = Color3.fromRGB(255, 255, 255);
+        titlestrokecolor = Color3.fromRGB(0, 0, 0);
+    }
 	
     function Library:CreateWindow(Name, Options)
 			
