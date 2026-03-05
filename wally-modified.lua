@@ -18,7 +18,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.45",
+    Build = "2026-03-05.46",
     BindDebug = false
 };
 local Defaults; do
@@ -1282,10 +1282,10 @@ local Defaults; do
                 Visible = false;
                 BackgroundTransparency = 1;
                 BorderSizePixel = 0;
-                Active = false;
+                Active = true;
                 Size = UDim2.new(1, 0, 1, 0);
                 Position = UDim2.new(0, 0, 0, 0);
-                ZIndex = 39;
+                ZIndex = 40;
                 Parent = PopupParent;
             });
 
@@ -1532,7 +1532,7 @@ local Defaults; do
                     PopupOpen = true;
                     PositionPopup();
                     PopupData.Visible = true;
-                    ModalBlocker.Visible = false;
+                    ModalBlocker.Visible = true;
 
                     if Instant then
                         PopupData.Size = UDim2.new(0, PopupWidth, 0, PopupHeight);
@@ -1724,6 +1724,7 @@ local Defaults; do
 
             ModalBlocker.InputBegan:Connect(function(Input)
                 if PopupOpen and IsPointerInput(Input) then
+                    SetPopupVisible(false, false);
                 end
             end);
 
