@@ -655,6 +655,15 @@ end)
 
 UtilityWindow:Section("Runtime API Demo")
 
+UtilityWindow:Button("Show Notification", function()
+    Library:Notify({
+        title = "Wally Modified",
+        text = "Notification system is active. This message auto-closes after 4 seconds.",
+        duration = 4,
+    })
+    StateLabel:Refresh("State: Sent test notification")
+end)
+
 local ReapplyEspButton = UtilityWindow:Button("Reapply ESP", function()
     ApplyMovement()
     RefreshEspForAllPlayers()
