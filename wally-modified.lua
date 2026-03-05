@@ -14,7 +14,7 @@ local Library = {
     Toggled = true,
     Binds = {},
     ToggleRegistry = {},
-    Build = "2026-03-05.12",
+    Build = "2026-03-05.13",
     BindDebug = false
 };
 local Defaults; do
@@ -974,16 +974,17 @@ local Defaults; do
 
             local PickerSize = math.clamp(tonumber(Options.size) or 90, 70, 130);
             local WheelImage = Options.wheelImage or "rbxassetid://6020299385";
-            local WheelTop = 24;
+            local WheelTop = 6;
             local ShadeTop = WheelTop + PickerSize + 6;
             local AlphaTop = ShadeTop + 20;
             local HexTop = AlphaTop + 20;
             local RgbTop = HexTop + 22;
-            local ControlHeight = RgbTop + 22 + 4;
+            local PopupWidth = PickerSize + 10;
+            local PopupHeight = RgbTop + 22 + 6;
 
             local CheckData = Library:Create('Frame', {
                 BackgroundTransparency = 1;
-                Size = UDim2.new(1, 0, 0, ControlHeight);
+                Size = UDim2.new(1, 0, 0, 25);
                 LayoutOrder = self:GetOrder();
                 Library:Create('TextLabel', {
                     Name = 'Title';
@@ -991,20 +992,35 @@ local Defaults; do
                     BackgroundTransparency = 1;
                     TextColor3 = Library.Options.textcolor;
                     Position = UDim2.new(0, 5, 0, 0);
-                    Size = UDim2.new(1, -5, 0, 22);
+                    Size = UDim2.new(1, -5, 1, 0);
                     TextXAlignment = Enum.TextXAlignment.Left;
                     Font = Library.Options.font;
                     TextSize = Library.Options.fontsize;
                     TextStrokeTransparency = Library.Options.textstroke;
                     TextStrokeColor3 = Library.Options.strokecolor;
-                    Library:Create('Frame', {
+                    Library:Create('TextButton', {
                         Name = 'Preview';
+                        Text = "";
+                        AutoButtonColor = false;
                         Size = UDim2.new(0, 22, 0, 14);
                         Position = UDim2.new(1, -28, 0, 4);
                         BackgroundColor3 = Default;
                         BorderColor3 = Library.Options.bordercolor;
                     });
                 });
+                Parent = self.container;
+            });
+
+            local PopupParent = (Library.Container and Library.Container.Parent) or ResolveGuiParent();
+            local PopupData = Library:Create('Frame', {
+                Name = 'ColorPickerPopup';
+                Visible = false;
+                Size = UDim2.new(0, PopupWidth, 0, 0);
+                Position = UDim2.new(0, 0, 0, 0);
+                BackgroundColor3 = Library.Options.bgcolor;
+                BorderColor3 = Library.Options.bordercolor;
+                ClipsDescendants = true;
+                Parent = PopupParent;
                 Library:Create('Frame', {
                     Name = 'WheelContainer';
                     Position = UDim2.new(0.5, -math.floor(PickerSize * 0.5), 0, WheelTop);
@@ -1173,26 +1189,38 @@ local Defaults; do
                         TextStrokeColor3 = Library.Options.strokecolor;
                     });
                 });
-                Parent = self.container;
             });
+
+            local function SetGuiZIndex(Root, Z)
+                if Root:IsA("GuiObject") then
+                    Root.ZIndex = Z;
+                end
+                for _, Descendant in next, Root:GetDescendants() do
+                    if Descendant:IsA("GuiObject") then
+                        Descendant.ZIndex = Z;
+                    end
+                end
+            end
+            SetGuiZIndex(PopupData, 40);
 
             local Title = CheckData:FindFirstChild("Title");
             local Preview = Title and Title:FindFirstChild("Preview");
-            local WheelContainer = CheckData:FindFirstChild("WheelContainer");
+            local WheelContainer = PopupData:FindFirstChild("WheelContainer");
             local Wheel = WheelContainer and WheelContainer:FindFirstChild("Wheel");
             local Selector = Wheel and Wheel:FindFirstChild("Selector");
-            local ShadeBar = CheckData:FindFirstChild("ShadeBar");
+            local ShadeBar = PopupData:FindFirstChild("ShadeBar");
             local ShadeTint = ShadeBar and ShadeBar:FindFirstChild("ShadeTint");
             local ShadeKnob = ShadeBar and ShadeBar:FindFirstChild("ShadeKnob");
-            local AlphaBar = CheckData:FindFirstChild("AlphaBar");
+            local AlphaBar = PopupData:FindFirstChild("AlphaBar");
             local AlphaTint = AlphaBar and AlphaBar:FindFirstChild("AlphaTint");
             local AlphaKnob = AlphaBar and AlphaBar:FindFirstChild("AlphaKnob");
-            local HexInput = CheckData:FindFirstChild("HexRow") and CheckData.HexRow:FindFirstChild("Input");
-            local RgbInput = CheckData:FindFirstChild("RgbRow") and CheckData.RgbRow:FindFirstChild("Input");
+            local HexInput = PopupData:FindFirstChild("HexRow") and PopupData.HexRow:FindFirstChild("Input");
+            local RgbInput = PopupData:FindFirstChild("RgbRow") and PopupData.RgbRow:FindFirstChild("Input");
 
             local WheelDragging = false;
             local ShadeDragging = false;
             local AlphaDragging = false;
+            local PopupOpen = false;
 
             local Hue, Saturation, Value = Default:ToHSV();
             local CurrentColor = Default;
@@ -1324,6 +1352,92 @@ local Defaults; do
                 ApplyState(NewHue, NewSaturation, NewValue, NewTransparency, FireCallback);
             end
 
+            local function IsPointInsideGui(GuiObject, Point)
+                if not GuiObject or (not GuiObject.Parent) then
+                    return false;
+                end
+                local Position = GuiObject.AbsolutePosition;
+                local Size = GuiObject.AbsoluteSize;
+                return Point.X >= Position.X and Point.X <= (Position.X + Size.X) and Point.Y >= Position.Y and Point.Y <= (Position.Y + Size.Y);
+            end
+
+            local function PositionPopup()
+                if (not Preview) or (not Preview.Parent) then
+                    return;
+                end
+
+                local Camera = workspace.CurrentCamera;
+                local ViewportSize = (Camera and Camera.ViewportSize) or Vector2.new(1920, 1080);
+                local PreviewPos = Preview.AbsolutePosition;
+                local PreviewSize = Preview.AbsoluteSize;
+                local X = PreviewPos.X + PreviewSize.X + 6;
+                local Y = PreviewPos.Y - 4;
+
+                if X + PopupWidth > ViewportSize.X - 6 then
+                    X = PreviewPos.X - PopupWidth - 6;
+                end
+                if X < 6 then
+                    X = 6;
+                end
+                if Y + PopupHeight > ViewportSize.Y - 6 then
+                    Y = ViewportSize.Y - PopupHeight - 6;
+                end
+                if Y < 6 then
+                    Y = 6;
+                end
+
+                PopupData.Position = UDim2.new(0, X, 0, Y);
+            end
+
+            local function SetPopupVisible(State, Instant)
+                if State then
+                    if Library.ActiveColorPopup and Library.ActiveColorPopup ~= PopupData and type(Library.ActiveColorPopupController) == "function" then
+                        pcall(Library.ActiveColorPopupController, false, true);
+                    end
+
+                    PopupOpen = true;
+                    PositionPopup();
+                    PopupData.Visible = true;
+
+                    if Instant then
+                        PopupData.Size = UDim2.new(0, PopupWidth, 0, PopupHeight);
+                    else
+                        PopupData.Size = UDim2.new(0, PopupWidth, 0, 0);
+                        PopupData:TweenSize(UDim2.new(0, PopupWidth, 0, PopupHeight), "Out", "Quint", .16, true);
+                    end
+
+                    Library.ActiveColorPopup = PopupData;
+                    Library.ActiveColorPopupController = SetPopupVisible;
+                    return;
+                end
+
+                PopupOpen = false;
+                WheelDragging = false;
+                ShadeDragging = false;
+                AlphaDragging = false;
+
+                if Library.ActiveColorPopup == PopupData then
+                    Library.ActiveColorPopup = nil;
+                    Library.ActiveColorPopupController = nil;
+                end
+
+                if (not PopupData.Parent) then
+                    return;
+                end
+
+                if Instant then
+                    PopupData.Visible = false;
+                    PopupData.Size = UDim2.new(0, PopupWidth, 0, 0);
+                else
+                    PopupData:TweenSize(UDim2.new(0, PopupWidth, 0, 0), "In", "Quint", .13, true);
+                    task.delay(0.14, function()
+                        if (not PopupOpen) and PopupData and PopupData.Parent then
+                            PopupData.Visible = false;
+                        end
+                    end);
+                end
+            end
+
             local function UpdateFromWheelMouse()
                 local MousePos = UserInputService:GetMouseLocation();
                 local Center = Wheel.AbsolutePosition + (Wheel.AbsoluteSize * 0.5);
@@ -1361,28 +1475,38 @@ local Defaults; do
                 return InputObject.UserInputType == Enum.UserInputType.MouseButton1 or InputObject.UserInputType == Enum.UserInputType.Touch;
             end
 
+            if Preview then
+                Preview.MouseButton1Click:Connect(function()
+                    SetPopupVisible(not PopupOpen, false);
+                end);
+            end
+
             Wheel.InputBegan:Connect(function(Input)
-                if IsPointerInput(Input) then
+                if PopupOpen and IsPointerInput(Input) then
                     WheelDragging = true;
                     UpdateFromWheelMouse();
                 end
             end);
 
             ShadeBar.InputBegan:Connect(function(Input)
-                if IsPointerInput(Input) then
+                if PopupOpen and IsPointerInput(Input) then
                     ShadeDragging = true;
                     UpdateFromShadeMouse();
                 end
             end);
 
             AlphaBar.InputBegan:Connect(function(Input)
-                if IsPointerInput(Input) then
+                if PopupOpen and IsPointerInput(Input) then
                     AlphaDragging = true;
                     UpdateFromAlphaMouse();
                 end
             end);
 
             UserInputService.InputChanged:Connect(function(Input)
+                if (not PopupOpen) then
+                    return;
+                end
+
                 if Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch then
                     if WheelDragging then
                         UpdateFromWheelMouse();
@@ -1398,14 +1522,20 @@ local Defaults; do
 
             UserInputService.InputEnded:Connect(function(Input)
                 if IsPointerInput(Input) then
-                    if WheelDragging then
-                        WheelDragging = false;
-                    end
-                    if ShadeDragging then
-                        ShadeDragging = false;
-                    end
-                    if AlphaDragging then
-                        AlphaDragging = false;
+                    WheelDragging = false;
+                    ShadeDragging = false;
+                    AlphaDragging = false;
+                end
+            end);
+
+            UserInputService.InputBegan:Connect(function(Input, Gpe)
+                if Gpe or (not PopupOpen) then
+                    return;
+                end
+                if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+                    local MousePos = UserInputService:GetMouseLocation();
+                    if (not IsPointInsideGui(PopupData, MousePos)) and (not IsPointInsideGui(Preview, MousePos)) then
+                        SetPopupVisible(false, false);
                     end
                 end
             end);
@@ -1429,6 +1559,7 @@ local Defaults; do
             end);
 
             ApplyColor(Default, false, DefaultTransparency);
+            SetPopupVisible(false, true);
 
             self:Resize();
             return {
