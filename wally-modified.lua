@@ -4,6 +4,7 @@ local Debris = game:GetService("Debris");
 local CoreGui = game:GetService("CoreGui");
 local HttpService = game:GetService("HttpService");
 local TextService = game:GetService("TextService");
+local GuiService = game:GetService("GuiService");
 
 local Library = {
     Count = 0,
@@ -18,7 +19,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.19",
+    Build = "2026-03-05.20",
     BindDebug = false
 };
 local Defaults; do
@@ -1379,8 +1380,15 @@ local Defaults; do
             end
 
             local function GetPointerPosition(InputObject)
-                if InputObject and typeof(InputObject.Position) == "Vector3" then
-                    return Vector2.new(InputObject.Position.X, InputObject.Position.Y);
+                if InputObject then
+                    local InputType = InputObject.UserInputType;
+                    if InputType == Enum.UserInputType.Touch or InputType == Enum.UserInputType.MouseMovement then
+                        if typeof(InputObject.Position) == "Vector3" then
+                            return Vector2.new(InputObject.Position.X, InputObject.Position.Y);
+                        end
+                    elseif InputType == Enum.UserInputType.MouseButton1 or InputType == Enum.UserInputType.MouseButton2 or InputType == Enum.UserInputType.MouseButton3 then
+                        return UserInputService:GetMouseLocation();
+                    end
                 end
                 return UserInputService:GetMouseLocation();
             end
@@ -1470,6 +1478,43 @@ local Defaults; do
                 local Position = GuiObject.AbsolutePosition;
                 local Size = GuiObject.AbsoluteSize;
                 return Point.X >= Position.X and Point.X <= (Position.X + Size.X) and Point.Y >= Position.Y and Point.Y <= (Position.Y + Size.Y);
+            end
+
+            local function GetPointerCandidates(InputObject)
+                local Candidates = {};
+                local function AddCandidate(Point)
+                    if typeof(Point) == "Vector2" then
+                        Candidates[#Candidates + 1] = Point;
+                    end
+                end
+
+                local MousePos = UserInputService:GetMouseLocation();
+                AddCandidate(MousePos);
+
+                local TopLeftInset = select(1, GuiService:GetGuiInset());
+                if typeof(TopLeftInset) == "Vector2" then
+                    AddCandidate(MousePos - TopLeftInset);
+                end
+
+                if InputObject and typeof(InputObject.Position) == "Vector3" then
+                    local InputPos = Vector2.new(InputObject.Position.X, InputObject.Position.Y);
+                    AddCandidate(InputPos);
+                    if typeof(TopLeftInset) == "Vector2" then
+                        AddCandidate(InputPos - TopLeftInset);
+                    end
+                end
+
+                return Candidates;
+            end
+
+            local function IsPointerInsidePopup(InputObject)
+                local Candidates = GetPointerCandidates(InputObject);
+                for _, Point in next, Candidates do
+                    if IsPointInsideGui(PopupData, Point) or IsPointInsideGui(Preview, Point) then
+                        return true;
+                    end
+                end
+                return false;
             end
 
             local function PositionPopup()
@@ -1713,7 +1758,9 @@ local Defaults; do
 
             ModalBlocker.InputBegan:Connect(function(Input)
                 if PopupOpen and IsPointerInput(Input) then
-                    SetPopupVisible(false, false);
+                    if not IsPointerInsidePopup(Input) then
+                        SetPopupVisible(false, false);
+                    end
                 end
             end);
 
@@ -1770,8 +1817,7 @@ local Defaults; do
                     return;
                 end
                 if IsPointerInput(Input) then
-                    local MousePos = GetPointerPosition(Input);
-                    if (not IsPointInsideGui(PopupData, MousePos)) and (not IsPointInsideGui(Preview, MousePos)) then
+                    if not IsPointerInsidePopup(Input) then
                         SetPopupVisible(false, false);
                     end
                 end
