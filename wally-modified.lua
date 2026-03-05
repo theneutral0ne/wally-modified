@@ -18,7 +18,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.24",
+    Build = "2026-03-05.25",
     BindDebug = false
 };
 local Defaults; do
@@ -1378,8 +1378,21 @@ local Defaults; do
             end
 
             local function GetPointerPosition(InputObject)
-                if InputObject and typeof(InputObject.Position) == "Vector3" then
-                    return Vector2.new(InputObject.Position.X, InputObject.Position.Y);
+                if InputObject then
+                    local InputType = InputObject.UserInputType;
+                    if InputType == Enum.UserInputType.Touch and typeof(InputObject.Position) == "Vector3" then
+                        return Vector2.new(InputObject.Position.X, InputObject.Position.Y);
+                    end
+                    if InputType == Enum.UserInputType.MouseButton1
+                        or InputType == Enum.UserInputType.MouseButton2
+                        or InputType == Enum.UserInputType.MouseButton3
+                        or InputType == Enum.UserInputType.MouseMovement
+                    then
+                        return UserInputService:GetMouseLocation();
+                    end
+                    if typeof(InputObject.Position) == "Vector3" then
+                        return Vector2.new(InputObject.Position.X, InputObject.Position.Y);
+                    end
                 end
                 return UserInputService:GetMouseLocation();
             end
@@ -1670,12 +1683,6 @@ local Defaults; do
                 BeginWheelDrag(Input);
             end);
 
-            ModalBlocker.InputBegan:Connect(function(Input)
-                if PopupOpen and IsPointerInput(Input) then
-                    SetPopupVisible(false, false);
-                end
-            end);
-
             ShadeBar.InputBegan:Connect(function(Input)
                 BeginShadeDrag(Input);
             end);
@@ -1720,6 +1727,17 @@ local Defaults; do
                         AlphaDragging = false;
                         ActiveAlphaInput = nil;
                     end
+                end
+            end);
+
+            UserInputService.InputBegan:Connect(function(Input, Gpe)
+                if Gpe or (not PopupOpen) or (not IsPointerInput(Input)) then
+                    return;
+                end
+
+                local PointerPos = GetPointerPosition(Input);
+                if (not IsPointInsideGui(PopupData, PointerPos)) and (not IsPointInsideGui(Preview, PointerPos)) then
+                    SetPopupVisible(false, false);
                 end
             end);
 
