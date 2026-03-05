@@ -19,7 +19,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.34",
+    Build = "2026-03-05.35",
     BindDebug = false
 };
 local Defaults; do
@@ -1708,7 +1708,10 @@ local Defaults; do
 
             ModalBlocker.InputBegan:Connect(function(Input)
                 if PopupOpen and IsPointerInput(Input) then
-                    SetPopupVisible(false, false);
+                    local PointerPos = GetPointerPosition(Input);
+                    if (not IsPointInsideGui(PopupData, PointerPos)) and (not IsPointInsideGui(Preview, PointerPos)) then
+                        SetPopupVisible(false, false);
+                    end
                 end
             end);
 
