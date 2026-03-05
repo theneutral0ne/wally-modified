@@ -685,9 +685,13 @@ local Defaults; do
                 Default = Color3.fromRGB(255, 0, 0);
             end
 
-            local PickerSize = math.clamp(tonumber(Options.size) or 86, 60, 140);
-            local ControlHeight = PickerSize + 28;
+            local PickerSize = math.clamp(tonumber(Options.size) or 90, 70, 130);
             local WheelImage = Options.wheelImage or "rbxassetid://6020299385";
+            local WheelTop = 24;
+            local ShadeTop = WheelTop + PickerSize + 6;
+            local HexTop = ShadeTop + 20;
+            local RgbTop = HexTop + 22;
+            local ControlHeight = RgbTop + 22 + 4;
 
             local CheckData = Library:Create('Frame', {
                 BackgroundTransparency = 1;
@@ -715,7 +719,7 @@ local Defaults; do
                 });
                 Library:Create('Frame', {
                     Name = 'WheelContainer';
-                    Position = UDim2.new(0, 5, 0, 24);
+                    Position = UDim2.new(0.5, -math.floor(PickerSize * 0.5), 0, WheelTop);
                     Size = UDim2.new(0, PickerSize, 0, PickerSize);
                     BackgroundColor3 = Library.Options.bgcolor;
                     BorderColor3 = Library.Options.bordercolor;
@@ -753,13 +757,172 @@ local Defaults; do
                         });
                     });
                 });
+                Library:Create('Frame', {
+                    Name = 'ShadeBar';
+                    Position = UDim2.new(0.5, -math.floor(PickerSize * 0.5), 0, ShadeTop);
+                    Size = UDim2.new(0, PickerSize, 0, 14);
+                    BackgroundColor3 = Library.Options.bgcolor;
+                    BorderColor3 = Library.Options.bordercolor;
+                    ClipsDescendants = true;
+                    Library:Create('Frame', {
+                        Name = 'ShadeTint';
+                        Position = UDim2.new(0, 0, 0, 0);
+                        Size = UDim2.new(1, 0, 1, 0);
+                        BorderSizePixel = 0;
+                        BackgroundColor3 = Color3.fromRGB(255, 0, 0);
+                        Library:Create('UIGradient', {
+                            Color = ColorSequence.new({
+                                ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1));
+                                ColorSequenceKeypoint.new(1, Color3.new(0, 0, 0));
+                            });
+                        });
+                    });
+                    Library:Create('Frame', {
+                        Name = 'ShadeKnob';
+                        AnchorPoint = Vector2.new(0.5, 0.5);
+                        Position = UDim2.new(0, 0, 0.5, 0);
+                        Size = UDim2.new(0, 6, 1, 2);
+                        BackgroundColor3 = Library.Options.textcolor;
+                        BorderColor3 = Library.Options.strokecolor;
+                    });
+                });
+                Library:Create('Frame', {
+                    Name = 'HexRow';
+                    Position = UDim2.new(0, 5, 0, HexTop);
+                    Size = UDim2.new(1, -10, 0, 20);
+                    BackgroundTransparency = 1;
+                    Library:Create('TextLabel', {
+                        Name = 'Label';
+                        Text = "HEX";
+                        BackgroundTransparency = 1;
+                        TextColor3 = Library.Options.textcolor;
+                        Position = UDim2.new(0, 0, 0, 0);
+                        Size = UDim2.new(0, 34, 1, 0);
+                        TextXAlignment = Enum.TextXAlignment.Left;
+                        Font = Library.Options.font;
+                        TextSize = Library.Options.fontsize;
+                        TextStrokeTransparency = Library.Options.textstroke;
+                        TextStrokeColor3 = Library.Options.strokecolor;
+                    });
+                    Library:Create('TextBox', {
+                        Name = 'Input';
+                        Text = "";
+                        ClearTextOnFocus = false;
+                        PlaceholderText = "#RRGGBB";
+                        TextColor3 = Library.Options.textcolor;
+                        BackgroundColor3 = Library.Options.boxcolor;
+                        BorderColor3 = Library.Options.bordercolor;
+                        PlaceholderColor3 = Library.Options.placeholdercolor;
+                        Position = UDim2.new(0, 34, 0, 0);
+                        Size = UDim2.new(1, -34, 1, 0);
+                        Font = Library.Options.font;
+                        TextSize = Library.Options.fontsize;
+                        TextStrokeTransparency = Library.Options.textstroke;
+                        TextStrokeColor3 = Library.Options.strokecolor;
+                    });
+                });
+                Library:Create('Frame', {
+                    Name = 'RgbRow';
+                    Position = UDim2.new(0, 5, 0, RgbTop);
+                    Size = UDim2.new(1, -10, 0, 20);
+                    BackgroundTransparency = 1;
+                    Library:Create('TextLabel', {
+                        Name = 'Label';
+                        Text = "RGB";
+                        BackgroundTransparency = 1;
+                        TextColor3 = Library.Options.textcolor;
+                        Position = UDim2.new(0, 0, 0, 0);
+                        Size = UDim2.new(0, 34, 1, 0);
+                        TextXAlignment = Enum.TextXAlignment.Left;
+                        Font = Library.Options.font;
+                        TextSize = Library.Options.fontsize;
+                        TextStrokeTransparency = Library.Options.textstroke;
+                        TextStrokeColor3 = Library.Options.strokecolor;
+                    });
+                    Library:Create('TextBox', {
+                        Name = 'Input';
+                        Text = "";
+                        ClearTextOnFocus = false;
+                        PlaceholderText = "255, 0, 0";
+                        TextColor3 = Library.Options.textcolor;
+                        BackgroundColor3 = Library.Options.boxcolor;
+                        BorderColor3 = Library.Options.bordercolor;
+                        PlaceholderColor3 = Library.Options.placeholdercolor;
+                        Position = UDim2.new(0, 34, 0, 0);
+                        Size = UDim2.new(1, -34, 1, 0);
+                        Font = Library.Options.font;
+                        TextSize = Library.Options.fontsize;
+                        TextStrokeTransparency = Library.Options.textstroke;
+                        TextStrokeColor3 = Library.Options.strokecolor;
+                    });
+                });
                 Parent = self.container;
             });
 
-            local Preview = CheckData:FindFirstChild("Title"):FindFirstChild("Preview");
-            local Wheel = CheckData:FindFirstChild("WheelContainer"):FindFirstChild("Wheel");
-            local Selector = Wheel:FindFirstChild("Selector");
-            local Dragging = false;
+            local Title = CheckData:FindFirstChild("Title");
+            local Preview = Title and Title:FindFirstChild("Preview");
+            local WheelContainer = CheckData:FindFirstChild("WheelContainer");
+            local Wheel = WheelContainer and WheelContainer:FindFirstChild("Wheel");
+            local Selector = Wheel and Wheel:FindFirstChild("Selector");
+            local ShadeBar = CheckData:FindFirstChild("ShadeBar");
+            local ShadeTint = ShadeBar and ShadeBar:FindFirstChild("ShadeTint");
+            local ShadeKnob = ShadeBar and ShadeBar:FindFirstChild("ShadeKnob");
+            local HexInput = CheckData:FindFirstChild("HexRow") and CheckData.HexRow:FindFirstChild("Input");
+            local RgbInput = CheckData:FindFirstChild("RgbRow") and CheckData.RgbRow:FindFirstChild("Input");
+
+            local WheelDragging = false;
+            local ShadeDragging = false;
+
+            local Hue, Saturation, Value = Default:ToHSV();
+            local CurrentColor = Default;
+
+            local function Clamp01(Number)
+                return math.clamp(tonumber(Number) or 0, 0, 1);
+            end
+
+            local function ColorToRgbTuple(NewColor)
+                return math.floor(NewColor.R * 255 + 0.5), math.floor(NewColor.G * 255 + 0.5), math.floor(NewColor.B * 255 + 0.5);
+            end
+
+            local function ColorToHex(NewColor)
+                local R, G, B = ColorToRgbTuple(NewColor);
+                return string.format("#%02X%02X%02X", R, G, B);
+            end
+
+            local function ParseHex(Text)
+                local Working = tostring(Text or ""):upper():gsub("%s+", ""):gsub("#", "");
+                if #Working == 3 and Working:find("^[%x]+$") then
+                    Working = Working:sub(1, 1):rep(2) .. Working:sub(2, 2):rep(2) .. Working:sub(3, 3):rep(2);
+                end
+                if #Working ~= 6 or (not Working:find("^[%x]+$")) then
+                    return nil;
+                end
+
+                local R = tonumber(Working:sub(1, 2), 16);
+                local G = tonumber(Working:sub(3, 4), 16);
+                local B = tonumber(Working:sub(5, 6), 16);
+                if (not R) or (not G) or (not B) then
+                    return nil;
+                end
+
+                return Color3.fromRGB(R, G, B);
+            end
+
+            local function ParseRgb(Text)
+                local Numbers = {};
+                for Number in tostring(Text or ""):gmatch("[%-]?%d+") do
+                    Numbers[#Numbers + 1] = math.clamp(tonumber(Number) or 0, 0, 255);
+                    if #Numbers == 3 then
+                        break;
+                    end
+                end
+
+                if #Numbers < 3 then
+                    return nil;
+                end
+
+                return Color3.fromRGB(Numbers[1], Numbers[2], Numbers[3]);
+            end
 
             local function GetRadius()
                 local Radius = math.min(Wheel.AbsoluteSize.X, Wheel.AbsoluteSize.Y) * 0.5;
@@ -769,73 +932,160 @@ local Defaults; do
                 return Radius;
             end
 
-            local function SetSelectorFromColor(NewColor)
-                local Hue, Saturation = NewColor:ToHSV();
-                local Radius = GetRadius();
-                local Angle = Hue * (math.pi * 2);
-                local Distance = Saturation * Radius;
-                local Offset = Vector2.new(math.cos(Angle), math.sin(Angle)) * Distance;
-                Selector.Position = UDim2.new(0.5, Offset.X, 0.5, Offset.Y);
+            local function UpdateInputs()
+                local FocusedBox = UserInputService:GetFocusedTextBox();
+                if HexInput and FocusedBox ~= HexInput then
+                    HexInput.Text = ColorToHex(CurrentColor);
+                end
+                if RgbInput and FocusedBox ~= RgbInput then
+                    local R, G, B = ColorToRgbTuple(CurrentColor);
+                    RgbInput.Text = string.format("%d, %d, %d", R, G, B);
+                end
             end
 
-            local function SetColor(NewColor, FireCallback)
+            local function UpdateVisuals()
+                if Selector then
+                    local Radius = GetRadius();
+                    local Angle = Hue * (math.pi * 2);
+                    local Distance = Saturation * Radius;
+                    local Offset = Vector2.new(math.cos(Angle), math.sin(Angle)) * Distance;
+                    Selector.Position = UDim2.new(0.5, Offset.X, 0.5, Offset.Y);
+                end
+
+                if ShadeTint then
+                    ShadeTint.BackgroundColor3 = Color3.fromHSV(Hue, Saturation, 1);
+                end
+
+                if ShadeKnob then
+                    ShadeKnob.Position = UDim2.new(1 - Value, 0, 0.5, 0);
+                end
+
+                if Preview then
+                    Preview.BackgroundColor3 = CurrentColor;
+                end
+            end
+
+            local function ApplyHsv(NewHue, NewSaturation, NewValue, FireCallback)
+                Hue = (tonumber(NewHue) or Hue or 0) % 1;
+                Saturation = Clamp01(NewSaturation or Saturation);
+                Value = Clamp01(NewValue or Value);
+                CurrentColor = Color3.fromHSV(Hue, Saturation, Value);
+
+                Location[Flag] = CurrentColor;
+                UpdateVisuals();
+                UpdateInputs();
+
+                if FireCallback ~= false then
+                    Callback(CurrentColor);
+                end
+            end
+
+            local function ApplyColor(NewColor, FireCallback)
                 if typeof(NewColor) ~= "Color3" then
                     return;
                 end
-                Location[Flag] = NewColor;
-                Preview.BackgroundColor3 = NewColor;
-                SetSelectorFromColor(NewColor);
-                if FireCallback ~= false then
-                    Callback(NewColor);
-                end
+                local NewHue, NewSaturation, NewValue = NewColor:ToHSV();
+                ApplyHsv(NewHue, NewSaturation, NewValue, FireCallback);
             end
 
-            local function UpdateFromMouse()
+            local function UpdateFromWheelMouse()
                 local MousePos = UserInputService:GetMouseLocation();
                 local Center = Wheel.AbsolutePosition + (Wheel.AbsoluteSize * 0.5);
                 local Offset = MousePos - Center;
                 local Radius = GetRadius();
 
                 local Magnitude = Offset.Magnitude;
-                if Magnitude > Radius then
+                if Magnitude > Radius and Magnitude > 0 then
                     Offset = Offset.Unit * Radius;
                     Magnitude = Radius;
                 end
 
-                local Saturation = (Radius > 0 and (Magnitude / Radius) or 0);
-                local Hue = (math.atan2(Offset.Y, Offset.X) / (2 * math.pi)) % 1;
-                local NewColor = Color3.fromHSV(Hue, Saturation, 1);
-                SetColor(NewColor, true);
+                local NewSaturation = (Radius > 0 and (Magnitude / Radius) or 0);
+                local NewHue = (math.atan2(Offset.Y, Offset.X) / (2 * math.pi)) % 1;
+                ApplyHsv(NewHue, NewSaturation, Value, true);
+            end
+
+            local function UpdateFromShadeMouse()
+                local MousePos = UserInputService:GetMouseLocation();
+                local ShadeWidth = math.max(ShadeBar.AbsoluteSize.X, 1);
+                local Percent = (MousePos.X - ShadeBar.AbsolutePosition.X) / ShadeWidth;
+                Percent = math.clamp(Percent, 0, 1);
+                ApplyHsv(Hue, Saturation, 1 - Percent, true);
+            end
+
+            local function IsPointerInput(InputObject)
+                return InputObject.UserInputType == Enum.UserInputType.MouseButton1 or InputObject.UserInputType == Enum.UserInputType.Touch;
             end
 
             Wheel.InputBegan:Connect(function(Input)
-                if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-                    Dragging = true;
-                    UpdateFromMouse();
+                if IsPointerInput(Input) then
+                    WheelDragging = true;
+                    UpdateFromWheelMouse();
+                end
+            end);
+
+            ShadeBar.InputBegan:Connect(function(Input)
+                if IsPointerInput(Input) then
+                    ShadeDragging = true;
+                    UpdateFromShadeMouse();
                 end
             end);
 
             UserInputService.InputChanged:Connect(function(Input)
-                if Dragging and Input.UserInputType == Enum.UserInputType.MouseMovement then
-                    UpdateFromMouse();
+                if Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch then
+                    if WheelDragging then
+                        UpdateFromWheelMouse();
+                    end
+                    if ShadeDragging then
+                        UpdateFromShadeMouse();
+                    end
                 end
             end);
 
             UserInputService.InputEnded:Connect(function(Input)
-                if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-                    Dragging = false;
+                if IsPointerInput(Input) then
+                    if WheelDragging then
+                        WheelDragging = false;
+                    end
+                    if ShadeDragging then
+                        ShadeDragging = false;
+                    end
                 end
             end);
 
-            SetColor(Default, false);
+            HexInput.FocusLost:Connect(function()
+                local Parsed = ParseHex(HexInput.Text);
+                if Parsed then
+                    ApplyColor(Parsed, true);
+                else
+                    UpdateInputs();
+                end
+            end);
+
+            RgbInput.FocusLost:Connect(function()
+                local Parsed = ParseRgb(RgbInput.Text);
+                if Parsed then
+                    ApplyColor(Parsed, true);
+                else
+                    UpdateInputs();
+                end
+            end);
+
+            ApplyColor(Default, false);
 
             self:Resize();
             return {
                 Set = function(_, NewColor, FireCallback)
-                    SetColor(NewColor, FireCallback ~= false);
+                    ApplyColor(NewColor, FireCallback ~= false);
                 end,
                 Get = function()
                     return Location[Flag];
+                end,
+                SetHSV = function(_, NewHue, NewSaturation, NewValue, FireCallback)
+                    ApplyHsv(NewHue, NewSaturation, NewValue, FireCallback ~= false);
+                end,
+                GetHSV = function()
+                    return Hue, Saturation, Value;
                 end
             };
         end
