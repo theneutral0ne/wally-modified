@@ -5,7 +5,18 @@ local CoreGui = game:GetService("CoreGui");
 local HttpService = game:GetService("HttpService");
 local TextService = game:GetService("TextService");
 
-local Library = {Count = 0, Queue = {}, Callbacks = {}, RainbowTable = {}, Toggled = true, Binds = {}, Build = "2026-03-05.11", BindDebug = false};
+local Library = {
+    Count = 0,
+    Queue = {},
+    Windows = {},
+    Callbacks = {},
+    RainbowTable = {},
+    Toggled = true,
+    Binds = {},
+    ToggleRegistry = {},
+    Build = "2026-03-05.12",
+    BindDebug = false
+};
 local Defaults; do
     local Dragger = {}; do
         function Dragger.New(Frame)
@@ -93,6 +104,7 @@ local Defaults; do
                 Position = UDim2.new(0, (15 + (200 * Library.Count) - 200), 0, 0);
                 ZIndex = 3;
                 Library:Create('TextLabel', {
+                    Name = "window_title";
                     Text = Name;
                     Size = UDim2.new(1, -45, 1, 0);
                     Position = UDim2.new(0, 5, 0, 0);
@@ -183,6 +195,7 @@ local Defaults; do
                 Window = WindowData.object;
                 Position = WindowData.object.Position;
             })
+            table.insert(Library.Windows, WindowData);
 
             if ListLayout then
                 ListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
@@ -235,30 +248,38 @@ local Defaults; do
         
         function Types:Toggle(Name, Options, Callback)
             Options = Options or {};
-            local WindowOptions = self.options or Library.Options or {};
             local Default  = Options.default or false;
             local Location = Options.location or self.flags;
             local Flag     = Options.flag or "";
             local Callback = Callback or function() end;
-            local ToggleStyle = string.lower(tostring(Options.togglestyle or Options.toggleStyle or WindowOptions.togglestyle or "checkmark"));
-            local IsFillStyle = (
-                ToggleStyle == "fill"
-                or ToggleStyle == "filled"
-                or ToggleStyle == "filledbox"
-                or ToggleStyle == "filledboxes"
-                or ToggleStyle == "filledboxs"
-                or ToggleStyle == "box"
-            );
-            local FillOnColor = Options.toggleoncolor or Options.oncolor or WindowOptions.toggleoncolor or WindowOptions.textcolor or Color3.fromRGB(255, 255, 255);
-            local FillOffColor = Options.toggleoffcolor or Options.offcolor or WindowOptions.toggleoffcolor or WindowOptions.bgcolor or Color3.fromRGB(35, 35, 35);
-            if typeof(FillOnColor) ~= "Color3" then
-                FillOnColor = WindowOptions.textcolor or Color3.fromRGB(255, 255, 255);
-            end
-            if typeof(FillOffColor) ~= "Color3" then
-                FillOffColor = WindowOptions.bgcolor or Color3.fromRGB(35, 35, 35);
+
+            local function ResolveToggleTheme()
+                local ActiveOptions = self.options or Library.Options or {};
+                local ToggleStyle = string.lower(tostring(Options.togglestyle or Options.toggleStyle or ActiveOptions.togglestyle or "checkmark"));
+                local IsFillStyle = (
+                    ToggleStyle == "fill"
+                    or ToggleStyle == "filled"
+                    or ToggleStyle == "filledbox"
+                    or ToggleStyle == "filledboxes"
+                    or ToggleStyle == "filledboxs"
+                    or ToggleStyle == "box"
+                );
+
+                local FillOnColor = Options.toggleoncolor or Options.oncolor or ActiveOptions.toggleoncolor or ActiveOptions.textcolor or Color3.fromRGB(255, 255, 255);
+                local FillOffColor = Options.toggleoffcolor or Options.offcolor or ActiveOptions.toggleoffcolor or ActiveOptions.bgcolor or Color3.fromRGB(35, 35, 35);
+
+                if typeof(FillOnColor) ~= "Color3" then
+                    FillOnColor = ActiveOptions.textcolor or Color3.fromRGB(255, 255, 255);
+                end
+                if typeof(FillOffColor) ~= "Color3" then
+                    FillOffColor = ActiveOptions.bgcolor or Color3.fromRGB(35, 35, 35);
+                end
+
+                return ActiveOptions, IsFillStyle, FillOnColor, FillOffColor;
             end
             
             Location[Flag] = Default;
+            local InitialOptions = self.options or Library.Options or {};
 
             local CheckData = Library:Create('Frame', {
                 BackgroundTransparency = 1;
@@ -268,39 +289,55 @@ local Defaults; do
                     Name = Name;
                     Text = "\r" .. Name;
                     BackgroundTransparency = 1;
-                    TextColor3 = WindowOptions.textcolor;
+                    TextColor3 = InitialOptions.textcolor;
                     Position = UDim2.new(0, 5, 0, 0);
                     Size     = UDim2.new(1, -5, 1, 0);
                     TextXAlignment = Enum.TextXAlignment.Left;
-                    Font = WindowOptions.font;
-                    TextSize = WindowOptions.fontsize;
-                    TextStrokeTransparency = WindowOptions.textstroke;
-                    TextStrokeColor3 = WindowOptions.strokecolor;
+                    Font = InitialOptions.font;
+                    TextSize = InitialOptions.fontsize;
+                    TextStrokeTransparency = InitialOptions.textstroke;
+                    TextStrokeColor3 = InitialOptions.strokecolor;
                     Library:Create('TextButton', {
                         Text = "";
-                        Font = WindowOptions.font;
-                        TextSize = WindowOptions.fontsize;
+                        Font = InitialOptions.font;
+                        TextSize = InitialOptions.fontsize;
                         Name = 'Checkmark';
                         Size = UDim2.new(0, 20, 0, 20);
                         Position = UDim2.new(1, -25, 0, 4);
-                        TextColor3 = WindowOptions.textcolor;
-                        BackgroundColor3 = WindowOptions.bgcolor;
-                        BorderColor3 = WindowOptions.bordercolor;
-                        TextStrokeTransparency = WindowOptions.textstroke;
-                        TextStrokeColor3 = WindowOptions.strokecolor;
+                        TextColor3 = InitialOptions.textcolor;
+                        BackgroundColor3 = InitialOptions.bgcolor;
+                        BorderColor3 = InitialOptions.bordercolor;
+                        TextStrokeTransparency = InitialOptions.textstroke;
+                        TextStrokeColor3 = InitialOptions.strokecolor;
                     })
                 });
                 Parent = self.container;
             });
 
+            local ToggleLabel = CheckData:FindFirstChild(Name);
             local ToggleButton = CheckData:FindFirstChild(Name).Checkmark;
             local function UpdateVisualState()
+                local ActiveOptions, IsFillStyle, FillOnColor, FillOffColor = ResolveToggleTheme();
+
+                ToggleLabel.Font = ActiveOptions.font;
+                ToggleLabel.TextSize = ActiveOptions.fontsize;
+                ToggleLabel.TextColor3 = ActiveOptions.textcolor;
+                ToggleLabel.TextStrokeTransparency = ActiveOptions.textstroke;
+                ToggleLabel.TextStrokeColor3 = ActiveOptions.strokecolor;
+
+                ToggleButton.Font = ActiveOptions.font;
+                ToggleButton.TextSize = ActiveOptions.fontsize;
+                ToggleButton.TextColor3 = ActiveOptions.textcolor;
+                ToggleButton.BorderColor3 = ActiveOptions.bordercolor;
+                ToggleButton.TextStrokeTransparency = ActiveOptions.textstroke;
+                ToggleButton.TextStrokeColor3 = ActiveOptions.strokecolor;
+
                 if IsFillStyle then
                     ToggleButton.Text = "";
                     ToggleButton.BackgroundColor3 = (Location[Flag] and FillOnColor or FillOffColor);
                 else
                     ToggleButton.Text = (Location[Flag] and utf8.char(10003) or "");
-                    ToggleButton.BackgroundColor3 = WindowOptions.bgcolor;
+                    ToggleButton.BackgroundColor3 = ActiveOptions.bgcolor;
                 end
             end
                 
@@ -313,6 +350,11 @@ local Defaults; do
             ToggleButton.MouseButton1Click:Connect(Click)
             Library.Callbacks[Flag] = Click;
             UpdateVisualState();
+
+            table.insert(Library.ToggleRegistry, {
+                Button = ToggleButton;
+                Update = UpdateVisualState;
+            });
 
             if Location[Flag] == true then
                 Callback(Location[Flag])
@@ -3321,7 +3363,153 @@ local Defaults; do
         placeholdercolor = Color3.fromRGB(255, 255, 255);
         titlestrokecolor = Color3.fromRGB(0, 0, 0);
     }
-	
+
+    local function SetUnderlineRainbowState(Underline, UseRainbow, SolidColor)
+        local ExistingIndex = nil;
+        for Index = #Library.RainbowTable, 1, -1 do
+            if Library.RainbowTable[Index] == Underline then
+                ExistingIndex = Index;
+                break;
+            end
+        end
+
+        if UseRainbow then
+            if not ExistingIndex then
+                table.insert(Library.RainbowTable, Underline);
+            end
+            return;
+        end
+
+        if ExistingIndex then
+            table.remove(Library.RainbowTable, ExistingIndex);
+        end
+        if typeof(SolidColor) == "Color3" then
+            Underline.BackgroundColor3 = SolidColor;
+        end
+    end
+
+    function Library:GetWindowOptions()
+        local Output = {};
+        if type(self.Options) == "table" then
+            for Key, Value in next, self.Options do
+                Output[Key] = Value;
+            end
+        end
+        return Output;
+    end
+
+    function Library:ApplyWindowOptions()
+        local ActiveOptions = self.Options;
+        if type(ActiveOptions) ~= "table" then
+            ActiveOptions = setmetatable({}, {__index = Defaults});
+            self.Options = ActiveOptions;
+        end
+
+        for Index = #self.Windows, 1, -1 do
+            local WindowData = self.Windows[Index];
+            local WindowObject = WindowData and WindowData.object;
+            if (not WindowObject) or (not WindowObject.Parent) then
+                table.remove(self.Windows, Index);
+            else
+                local WindowOptions = WindowData.options or ActiveOptions;
+                local ItemSpacing = math.clamp(
+                    math.floor((tonumber(WindowOptions.itemspacing or WindowOptions.methodspacing or WindowOptions.controlspacing or WindowOptions.spacing) or 0) + 0.5),
+                    0,
+                    40
+                );
+
+                WindowObject.BackgroundColor3 = WindowOptions.topcolor;
+
+                local WindowTitle = WindowObject:FindFirstChild("window_title");
+                if WindowTitle then
+                    WindowTitle.Font = WindowOptions.titlefont;
+                    WindowTitle.TextSize = WindowOptions.titlesize;
+                    WindowTitle.TextColor3 = WindowOptions.titletextcolor;
+                    WindowTitle.TextStrokeTransparency = WindowOptions.titlestroke;
+                    WindowTitle.TextStrokeColor3 = WindowOptions.titlestrokecolor;
+                end
+
+                local WindowToggle = WindowObject:FindFirstChild("window_toggle");
+                if WindowToggle then
+                    WindowToggle.Font = WindowOptions.titlefont;
+                    WindowToggle.TextSize = WindowOptions.titlesize;
+                    WindowToggle.TextColor3 = WindowOptions.titletextcolor;
+                    WindowToggle.TextStrokeTransparency = WindowOptions.titlestroke;
+                    WindowToggle.TextStrokeColor3 = WindowOptions.titlestrokecolor;
+                end
+
+                local Underline = WindowObject:FindFirstChild("Underline");
+                if Underline then
+                    local UseRainbow = (WindowOptions.underlinecolor == "rainbow");
+                    local SolidColor = WindowOptions.underlinecolor;
+                    if UseRainbow then
+                        SolidColor = nil;
+                    elseif typeof(SolidColor) ~= "Color3" then
+                        SolidColor = Defaults.underlinecolor;
+                    end
+                    SetUnderlineRainbowState(Underline, UseRainbow, SolidColor);
+                end
+
+                local ContainerData = WindowData.container or WindowObject:FindFirstChild("ContainerData");
+                if ContainerData then
+                    ContainerData.BackgroundColor3 = WindowOptions.bgcolor;
+                end
+
+                local ListLayout = WindowData.list or (ContainerData and ContainerData:FindFirstChild("List"));
+                if ListLayout then
+                    ListLayout.Padding = UDim.new(0, ItemSpacing);
+                end
+
+                if type(WindowData.Resize) == "function" then
+                    WindowData:Resize();
+                end
+            end
+        end
+
+        for Index = #self.ToggleRegistry, 1, -1 do
+            local Entry = self.ToggleRegistry[Index];
+            if (not Entry) or (not Entry.Button) or (not Entry.Button.Parent) then
+                table.remove(self.ToggleRegistry, Index);
+            elseif type(Entry.Update) == "function" then
+                pcall(Entry.Update);
+            end
+        end
+
+        return true;
+    end
+
+    function Library:SetWindowOptions(NewOptions, ApplyNow)
+        if type(NewOptions) ~= "table" then
+            return false, "options must be a table";
+        end
+
+        if type(self.Options) ~= "table" then
+            self.Options = setmetatable({}, {__index = Defaults});
+        end
+
+        for Key, Value in next, NewOptions do
+            self.Options[Key] = Value;
+        end
+
+        for _, WindowData in next, self.Windows do
+            if WindowData and type(WindowData.options) == "table" then
+                for Key, Value in next, NewOptions do
+                    WindowData.options[Key] = Value;
+                end
+            end
+        end
+
+        if ApplyNow ~= false then
+            self:ApplyWindowOptions();
+        end
+
+        return true;
+    end
+
+    function Library:UpdateWindowOptions(NewOptions, ApplyNow)
+        return self:SetWindowOptions(NewOptions, ApplyNow);
+    end
+		
     function Library:CreateWindow(Name, Options)
 			
         if (not Library.Container) then
@@ -3349,6 +3537,7 @@ local Defaults; do
 		
         local WindowData = Types.Window(Name, Library.Options);
         Dragger.New(WindowData.object);
+        self:ApplyWindowOptions();
         return WindowData
     end
 
