@@ -8,8 +8,8 @@ local LocalPlayer = Players.LocalPlayer
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/theneutral0ne/wally-modified/refs/heads/main/wally-modified.lua"))()
 
--- Temporary while debugging bind behavior.
-Library.BindDebug = true
+-- Turn on if you need bind diagnostics:
+Library.BindDebug = false
 
 local Flags = {}
 
