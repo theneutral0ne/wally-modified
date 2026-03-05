@@ -4,6 +4,7 @@ local Debris = game:GetService("Debris");
 local CoreGui = game:GetService("CoreGui");
 local HttpService = game:GetService("HttpService");
 local TextService = game:GetService("TextService");
+local GuiService = game:GetService("GuiService");
 
 local Library = {
     Count = 0,
@@ -18,7 +19,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.32",
+    Build = "2026-03-05.34",
     BindDebug = false
 };
 local Defaults; do
@@ -1087,6 +1088,10 @@ local Defaults; do
             });
 
             local PopupParent = (Library.Container and Library.Container.Parent) or ResolveGuiParent();
+            local PopupScreenGui = PopupParent;
+            if not PopupScreenGui:IsA("ScreenGui") then
+                PopupScreenGui = PopupParent:FindFirstAncestorOfClass("ScreenGui");
+            end
             local PopupData = Library:Create('Frame', {
                 Name = 'ColorPickerPopup';
                 Visible = false;
@@ -1394,11 +1399,22 @@ local Defaults; do
                 return Radius * WheelRadiusScale;
             end
 
+            local function ToGuiPoint(ScreenPoint)
+                local Point = ScreenPoint;
+                if PopupScreenGui and (not PopupScreenGui.IgnoreGuiInset) then
+                    local TopLeftInset = select(1, GuiService:GetGuiInset());
+                    if typeof(TopLeftInset) == "Vector2" then
+                        Point = Point - TopLeftInset;
+                    end
+                end
+                return Point;
+            end
+
             local function GetPointerPosition(InputObject, _)
                 if InputObject and typeof(InputObject.Position) == "Vector3" then
-                    return Vector2.new(InputObject.Position.X, InputObject.Position.Y);
+                    return ToGuiPoint(Vector2.new(InputObject.Position.X, InputObject.Position.Y));
                 end
-                return UserInputService:GetMouseLocation();
+                return ToGuiPoint(UserInputService:GetMouseLocation());
             end
 
             local function HueToWheelAngle(HueValue)
@@ -1692,7 +1708,7 @@ local Defaults; do
 
             ModalBlocker.InputBegan:Connect(function(Input)
                 if PopupOpen and IsPointerInput(Input) then
-                    -- Intentionally empty: blocker consumes outside clicks so controls behind popup cannot be clicked.
+                    SetPopupVisible(false, false);
                 end
             end);
 
