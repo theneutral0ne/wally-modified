@@ -14,8 +14,7 @@ Library.BindDebug = false
 local Flags = {}
 local ScriptPresetKey = "WallyPracticalExample"
 
-local PresetManager = Library:CreatePresetManager(ScriptPresetKey, {
-    location = Flags,
+local PresetManager = Library:CreateScriptPresetManager(ScriptPresetKey, {
     rootFolder = "WallyModifiedPresets",
     extension = ".json",
     clearOnLoad = true,
@@ -263,25 +262,6 @@ LocalPlayer.CharacterAdded:Connect(function()
     ApplyMovement()
     RefreshEspForAllPlayers()
 end)
-
-local function BuildPresetPayload()
-    local Payload = {
-        MovementEnabled = Flags.MovementEnabled,
-        WalkSpeed = Flags.WalkSpeed,
-        JumpPower = Flags.JumpPower,
-        BoxEspEnabled = Flags.BoxEspEnabled,
-        EspMode = Flags.EspMode,
-        NameFilter = Flags.NameFilter,
-        EspLineThickness = Flags.EspLineThickness,
-        EspColor = Flags.EspColor,
-        EspTransparency = Flags.EspTransparency,
-        EspIgnoredPlayers = Flags.EspIgnoredPlayers,
-        EspToggleBind = Flags.EspToggleBind,
-        TeleportTarget = Flags.TeleportTarget,
-    }
-
-    return Payload
-end
 
 -- MAIN WINDOW
 MainWindow:Section("Movement")
@@ -589,7 +569,7 @@ UtilityWindow:Button("Save Preset", function()
         return
     end
 
-    local OkSave, SaveResult = PresetManager:Save(PresetName, BuildPresetPayload())
+    local OkSave, SaveResult = PresetManager:Save(PresetName)
     if not OkSave then
         PresetStateLabel:Refresh("Preset State: Save failed (" .. tostring(SaveResult) .. ")")
         PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145))
@@ -620,16 +600,11 @@ UtilityWindow:Button("Load Preset", function()
         return
     end
 
-    local Buffer = {}
-    local OkLoad, DataOrError = PresetManager:Load(PresetName, Buffer, true)
+    local OkLoad, DataOrError = PresetManager:Load(PresetName, nil, true)
     if not OkLoad then
         PresetStateLabel:Refresh("Preset State: Load failed (" .. tostring(DataOrError) .. ")")
         PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145))
         return
-    end
-
-    for Key, Value in next, DataOrError do
-        Flags[Key] = Value
     end
 
     ApplyFlagsToControls()
