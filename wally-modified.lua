@@ -14,7 +14,10 @@ local Library = {
     Toggled = true,
     Binds = {},
     ToggleRegistry = {},
-    Build = "2026-03-05.14",
+    FlagLocations = {},
+    FlagLocationLookup = {},
+    RegisteredFlags = {},
+    Build = "2026-03-05.15",
     BindDebug = false
 };
 local Defaults; do
@@ -279,6 +282,7 @@ local Defaults; do
             end
             
             Location[Flag] = Default;
+            Library:RegisterFlag(Location, Flag);
             local InitialOptions = self.options or Library.Options or {};
 
             local CheckData = Library:Create('Frame', {
@@ -429,6 +433,7 @@ local Defaults; do
                 Default = tostring(Default);
                 Location[Flag] = Default;
             end
+            Library:RegisterFlag(Location, Flag);
 
             local CheckData = Library:Create('Frame', {
                 BackgroundTransparency = 1;
@@ -704,6 +709,7 @@ local Defaults; do
             if NormalizedDefault then
                 Location[Flag] = NormalizedDefault;
             end
+            Library:RegisterFlag(Location, Flag);
 
             local DisplayName = GetInputName(Location[Flag]);
             local CheckData = Library:Create('Frame', {
@@ -971,6 +977,10 @@ local Defaults; do
                 Default = Color3.fromRGB(255, 0, 0);
             end
             local DefaultTransparency = math.clamp(tonumber(Options.transparency or Options.alpha or 0) or 0, 0, 1);
+            Library:RegisterFlag(Location, Flag);
+            if TransparencyFlag ~= nil and tostring(TransparencyFlag) ~= "" then
+                Library:RegisterFlag(TransparencyLocation, TransparencyFlag);
+            end
 
             local PickerSize = math.clamp(tonumber(Options.size) or 90, 70, 130);
             local WheelImage = Options.wheelImage or "rbxassetid://6020299385";
@@ -1600,6 +1610,7 @@ local Defaults; do
             local Decimals = math.clamp(math.floor(tonumber(Options.decimals) or 2), 0, 6);
             local Flag     = Options.flag or "";
             local Callback = Callback or function() end
+            Library:RegisterFlag(Location, Flag);
 
             if Min > Max then
                 Min, Max = Max, Min;
@@ -1784,6 +1795,7 @@ local Defaults; do
             local Flag = Options.flag or "";
             local Location = Options.location or self.flags;
             local Callback = Callback or function() end;
+            Library:RegisterFlag(Location, Flag);
 
             local Busy = false;
             local BoxData = Library:Create('Frame', {
@@ -1908,6 +1920,7 @@ local Defaults; do
             local DefaultSelection = ListData[1] or "";
 
             Location[Flag] = DefaultSelection
+            Library:RegisterFlag(Location, Flag);
             local CheckData = Library:Create('Frame', {
                 BackgroundTransparency = 1;
                 Size = UDim2.new(1, 0, 0, 25);
@@ -2101,6 +2114,7 @@ local Defaults; do
             local Flag = Options.flag or "";
             local Callback = Callback or function() end;
             local ListData = Options.list or {};
+            Library:RegisterFlag(Location, Flag);
 
             local SearchEnabled = Options.search ~= false;
             local SortList = Options.sort ~= false;
@@ -2932,10 +2946,136 @@ local Defaults; do
         return self:Notify(...);
     end
 
+    function Library:RegisterFlagLocation(Location)
+        if type(Location) ~= "table" then
+            return false;
+        end
+
+        self.FlagLocations = self.FlagLocations or {};
+        self.FlagLocationLookup = self.FlagLocationLookup or {};
+
+        if not self.FlagLocationLookup[Location] then
+            self.FlagLocationLookup[Location] = true;
+            table.insert(self.FlagLocations, Location);
+        end
+
+        return true;
+    end
+
+    function Library:RegisterFlag(Location, Flag)
+        if type(Location) ~= "table" then
+            return false;
+        end
+
+        self:RegisterFlagLocation(Location);
+
+        local FlagName = tostring(Flag or "");
+        if FlagName == "" then
+            return false;
+        end
+
+        self.RegisteredFlags = self.RegisteredFlags or {};
+        local Entry = self.RegisteredFlags[FlagName];
+        if type(Entry) ~= "table" then
+            Entry = {
+                Locations = {};
+                Lookup = {};
+            };
+            self.RegisteredFlags[FlagName] = Entry;
+        end
+
+        Entry.Locations = Entry.Locations or {};
+        Entry.Lookup = Entry.Lookup or {};
+        if not Entry.Lookup[Location] then
+            Entry.Lookup[Location] = true;
+            table.insert(Entry.Locations, Location);
+        end
+
+        return true;
+    end
+
+    function Library:CollectScriptPresetData()
+        local Output = {};
+        local Flags = self.RegisteredFlags or {};
+        for FlagName, Entry in next, Flags do
+            local Locations = Entry and Entry.Locations;
+            if type(Locations) == "table" then
+                for _, Location in next, Locations do
+                    if type(Location) == "table" then
+                        local Value = Location[FlagName];
+                        if Value ~= nil then
+                            Output[FlagName] = Value;
+                            break;
+                        end
+                    end
+                end
+            end
+        end
+        return Output;
+    end
+
+    function Library:ApplyScriptPresetData(Data, ShouldClear)
+        if type(Data) ~= "table" then
+            return false, "preset data must be a table";
+        end
+
+        local Incoming = {};
+        for Key in next, Data do
+            local FlagName = tostring(Key or "");
+            if FlagName ~= "" then
+                Incoming[FlagName] = true;
+            end
+        end
+
+        local Flags = self.RegisteredFlags or {};
+        if ShouldClear then
+            for FlagName, Entry in next, Flags do
+                if not Incoming[FlagName] then
+                    local Locations = Entry and Entry.Locations;
+                    if type(Locations) == "table" then
+                        for _, Location in next, Locations do
+                            if type(Location) == "table" then
+                                Location[FlagName] = nil;
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        for Key, Value in next, Data do
+            local FlagName = tostring(Key or "");
+            if FlagName ~= "" then
+                local Entry = Flags[FlagName];
+                local Applied = false;
+                local Locations = Entry and Entry.Locations;
+                if type(Locations) == "table" then
+                    for _, Location in next, Locations do
+                        if type(Location) == "table" then
+                            Location[FlagName] = Value;
+                            Applied = true;
+                        end
+                    end
+                end
+
+                if not Applied then
+                    local FallbackLocations = self.FlagLocations or {};
+                    local FirstLocation = FallbackLocations[1];
+                    if type(FirstLocation) == "table" then
+                        FirstLocation[FlagName] = Value;
+                    end
+                end
+            end
+        end
+
+        return true;
+    end
+
     function Library:CreatePresetManager(ScriptKeyOrOptions, MaybeOptions)
         -- Supported usage:
         -- Library:CreatePresetManager("MyScriptKey", {location = Flags})
         -- Library:CreatePresetManager({scriptKey = "MyScriptKey", location = Flags})
+        -- Library:CreatePresetManager("MyScriptKey") -- script-wide (all registered flags)
         local Options = {};
         if type(ScriptKeyOrOptions) == "string" then
             if type(MaybeOptions) == "table" then
@@ -2954,7 +3094,23 @@ local Defaults; do
             end
         end
 
-        local Location = (type(Options.location) == "table" and Options.location) or {};
+        local HasExplicitLocation = (type(Options.location) == "table");
+        local ScopeData = string.lower(tostring(Options.scope or ""));
+        local UseScriptScope;
+        if Options.scriptWide ~= nil then
+            UseScriptScope = (Options.scriptWide == true);
+        elseif Options.global ~= nil then
+            UseScriptScope = (Options.global == true);
+        elseif ScopeData ~= "" then
+            UseScriptScope = (ScopeData == "script" or ScopeData == "global" or ScopeData == "all");
+        else
+            UseScriptScope = (not HasExplicitLocation);
+        end
+
+        local Location = (HasExplicitLocation and Options.location) or {};
+        if HasExplicitLocation then
+            Library:RegisterFlagLocation(Location);
+        end
         local RootFolder = tostring(Options.rootFolder or "WallyModifiedPresets");
         local Extension = tostring(Options.extension or ".json");
         local ClearOnLoad = (Options.clearOnLoad ~= false);
@@ -3294,6 +3450,9 @@ local Defaults; do
         end
 
         function Manager:GetLocation()
+            if UseScriptScope then
+                return Library:CollectScriptPresetData();
+            end
             return Location;
         end
 
@@ -3302,7 +3461,13 @@ local Defaults; do
                 return false, "location must be a table";
             end
             Location = NewLocation;
+            UseScriptScope = false;
+            Library:RegisterFlagLocation(Location);
             return true;
+        end
+
+        function Manager:IsScriptScope()
+            return UseScriptScope;
         end
 
         function Manager:SetScriptKey(NewKey)
@@ -3325,7 +3490,14 @@ local Defaults; do
                 return false, FolderError;
             end
 
-            local Source = (type(SourceLocation) == "table" and SourceLocation) or Location;
+            local Source = nil;
+            if type(SourceLocation) == "table" then
+                Source = SourceLocation;
+            elseif UseScriptScope then
+                Source = Library:CollectScriptPresetData();
+            else
+                Source = Location;
+            end
             if type(Source) ~= "table" then
                 return false, "source location must be a table";
             end
@@ -3353,12 +3525,25 @@ local Defaults; do
                 return false, DataOrError;
             end
 
-            local Target = (type(TargetLocation) == "table" and TargetLocation) or Location;
+            local ShouldClear = (OverrideClearOnLoad ~= nil and OverrideClearOnLoad) or (OverrideClearOnLoad == nil and ClearOnLoad);
+            if type(TargetLocation) == "table" then
+                MergeInto(TargetLocation, DataOrError, ShouldClear);
+                return true, DataOrError;
+            end
+
+            if UseScriptScope then
+                local OkApply, ApplyError = Library:ApplyScriptPresetData(DataOrError, ShouldClear);
+                if not OkApply then
+                    return false, ApplyError;
+                end
+                return true, DataOrError;
+            end
+
+            local Target = Location;
             if type(Target) ~= "table" then
                 return false, "target location must be a table";
             end
 
-            local ShouldClear = (OverrideClearOnLoad ~= nil and OverrideClearOnLoad) or (OverrideClearOnLoad == nil and ClearOnLoad);
             MergeInto(Target, DataOrError, ShouldClear);
             return true, DataOrError;
         end
@@ -3446,6 +3631,31 @@ local Defaults; do
         end
 
         return Manager;
+    end
+
+    function Library:CreateScriptPresetManager(ScriptKeyOrOptions, MaybeOptions)
+        local Options = {};
+        if type(ScriptKeyOrOptions) == "string" then
+            if type(MaybeOptions) == "table" then
+                for Key, Value in next, MaybeOptions do
+                    Options[Key] = Value;
+                end
+            end
+            Options.scriptKey = ScriptKeyOrOptions;
+        elseif type(ScriptKeyOrOptions) == "table" then
+            for Key, Value in next, ScriptKeyOrOptions do
+                Options[Key] = Value;
+            end
+        elseif type(MaybeOptions) == "table" then
+            for Key, Value in next, MaybeOptions do
+                Options[Key] = Value;
+            end
+        end
+
+        Options.scope = "script";
+        Options.scriptWide = true;
+        Options.location = nil;
+        return self:CreatePresetManager(Options);
     end
     
     Defaults = {
