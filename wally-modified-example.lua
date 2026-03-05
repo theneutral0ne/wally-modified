@@ -432,6 +432,106 @@ local StateLabel = UtilityWindow:Label("State: Ready", {
     borderColor = Color3.fromRGB(60, 60, 60),
 })
 
+UtilityWindow:Section("UI Settings")
+
+local UiSettings = {
+    ToggleStyle = tostring(WindowOptions.togglestyle or "checkmark"),
+    ItemSpacing = tonumber(WindowOptions.itemspacing) or 2,
+    ToggleOnColor = WindowOptions.toggleoncolor or Color3.fromRGB(0, 255, 140),
+    ToggleOffColor = WindowOptions.toggleoffcolor or Color3.fromRGB(35, 35, 35),
+    UnderlineMode = (WindowOptions.underlinecolor == "rainbow" and "Rainbow" or "Solid"),
+    UnderlineColor = (typeof(WindowOptions.underlinecolor) == "Color3" and WindowOptions.underlinecolor or Color3.fromRGB(0, 255, 140)),
+}
+
+local function ApplyUiSettings()
+    local UnderlineValue = UiSettings.UnderlineColor
+    if UiSettings.UnderlineMode == "Rainbow" then
+        UnderlineValue = "rainbow"
+    end
+
+    Library:SetWindowOptions({
+        togglestyle = string.lower(tostring(UiSettings.ToggleStyle or "checkmark")),
+        itemspacing = tonumber(UiSettings.ItemSpacing) or 0,
+        toggleoncolor = UiSettings.ToggleOnColor,
+        toggleoffcolor = UiSettings.ToggleOffColor,
+        underlinecolor = UnderlineValue,
+        notifyaccentcolor = (UnderlineValue == "rainbow" and Color3.fromRGB(0, 255, 140) or UiSettings.UnderlineColor),
+    }, true)
+end
+
+UtilityWindow:Dropdown("Toggle Style", {
+    location = UiSettings,
+    flag = "ToggleStyle",
+    list = (UiSettings.ToggleStyle == "fill" and {"fill", "checkmark"} or {"checkmark", "fill"}),
+}, function()
+    ApplyUiSettings()
+    StateLabel:Refresh("State: Toggle style -> " .. tostring(UiSettings.ToggleStyle))
+end)
+
+UtilityWindow:Slider("UI Item Spacing", {
+    location = UiSettings,
+    flag = "ItemSpacing",
+    min = 0,
+    max = 16,
+    default = UiSettings.ItemSpacing,
+}, function()
+    ApplyUiSettings()
+    StateLabel:Refresh("State: Item spacing -> " .. tostring(UiSettings.ItemSpacing))
+end)
+
+UtilityWindow:ColorPicker("Toggle On Color", {
+    location = UiSettings,
+    flag = "ToggleOnColor",
+    default = UiSettings.ToggleOnColor,
+    size = 84,
+}, function()
+    ApplyUiSettings()
+end)
+
+UtilityWindow:ColorPicker("Toggle Off Color", {
+    location = UiSettings,
+    flag = "ToggleOffColor",
+    default = UiSettings.ToggleOffColor,
+    size = 84,
+}, function()
+    ApplyUiSettings()
+end)
+
+UtilityWindow:Dropdown("Underline Mode", {
+    location = UiSettings,
+    flag = "UnderlineMode",
+    list = (UiSettings.UnderlineMode == "Rainbow" and {"Rainbow", "Solid"} or {"Solid", "Rainbow"}),
+}, function()
+    ApplyUiSettings()
+    StateLabel:Refresh("State: Underline mode -> " .. tostring(UiSettings.UnderlineMode))
+end)
+
+UtilityWindow:ColorPicker("Underline Color", {
+    location = UiSettings,
+    flag = "UnderlineColor",
+    default = UiSettings.UnderlineColor,
+    size = 84,
+}, function()
+    if UiSettings.UnderlineMode ~= "Rainbow" then
+        ApplyUiSettings()
+    end
+end)
+
+UtilityWindow:Button("Reset UI Settings", function()
+    UiSettings.ToggleStyle = "checkmark"
+    UiSettings.ItemSpacing = 2
+    UiSettings.ToggleOnColor = Color3.fromRGB(0, 255, 140)
+    UiSettings.ToggleOffColor = Color3.fromRGB(35, 35, 35)
+    UiSettings.UnderlineMode = "Rainbow"
+    UiSettings.UnderlineColor = Color3.fromRGB(0, 255, 140)
+
+    ApplyUiSettings()
+    StateLabel:Refresh("State: UI settings reset")
+    Library:Notify("Wally Modified", "UI settings reset.", 2)
+end)
+
+ApplyUiSettings()
+
 UtilityWindow:Section("Teleport")
 
 local RefreshTeleportSearch, TeleportSearchBox = UtilityWindow:SearchBox("Search player name...", {
