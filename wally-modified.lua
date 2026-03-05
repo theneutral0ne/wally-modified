@@ -17,7 +17,8 @@ local Library = {
     FlagLocations = {},
     FlagLocationLookup = {},
     RegisteredFlags = {},
-    Build = "2026-03-05.16",
+    FlagControllers = {},
+    Build = "2026-03-05.17",
     BindDebug = false
 };
 local Defaults; do
@@ -191,6 +192,7 @@ local Defaults; do
                 flags   = {};
                 OrderData = 0;
                 order = 0;
+                AutoFlagPrefix = tostring(Name or "Window") .. "_" .. tostring(Library.Count);
 
             }, Types)
 
@@ -248,12 +250,36 @@ local Defaults; do
             self.order = OrderData + 1;
             return OrderData;
         end
+
+        function Types:ResolveFlag(ProvidedFlag, Name, Kind)
+            local FlagName = tostring(ProvidedFlag or "");
+            if FlagName ~= "" then
+                return FlagName;
+            end
+
+            self.AutoFlagCounter = (self.AutoFlagCounter or 0) + 1;
+            local Prefix = tostring(self.AutoFlagPrefix or "Window");
+            Prefix = Prefix:gsub("[%c%s]+", "_"):gsub("[^%w_]", "_"):gsub("_+", "_");
+            Prefix = Prefix:gsub("^_+", ""):gsub("_+$", "");
+            if Prefix == "" then
+                Prefix = "Window";
+            end
+
+            local NamePart = tostring(Name or Kind or "Flag");
+            NamePart = NamePart:gsub("[%c%s]+", "_"):gsub("[^%w_]", "_"):gsub("_+", "_");
+            NamePart = NamePart:gsub("^_+", ""):gsub("_+$", "");
+            if NamePart == "" then
+                NamePart = tostring(Kind or "Flag");
+            end
+
+            return "__WallyAuto_" .. Prefix .. "_" .. tostring(Kind or "Flag") .. "_" .. tostring(self.AutoFlagCounter) .. "_" .. NamePart;
+        end
         
         function Types:Toggle(Name, Options, Callback)
             Options = Options or {};
             local Default  = Options.default or false;
             local Location = Options.location or self.flags;
-            local Flag     = Options.flag or "";
+            local Flag     = self:ResolveFlag(Options.flag, Name, "Toggle");
             local Callback = Callback or function() end;
 
             local function ResolveToggleTheme()
@@ -281,8 +307,7 @@ local Defaults; do
                 return ActiveOptions, IsFillStyle, FillOnColor, FillOffColor;
             end
             
-            Location[Flag] = Default;
-            Library:RegisterFlag(Location, Flag);
+            Location[Flag] = (Default == true);
             local InitialOptions = self.options or Library.Options or {};
 
             local CheckData = Library:Create('Frame', {
@@ -345,10 +370,16 @@ local Defaults; do
                 end
             end
                 
-            local function Click(Temp)
-                Location[Flag] = not Location[Flag];
-                Callback(Location[Flag])
+            local function SetToggleState(NewValue, FireCallback)
+                Location[Flag] = (NewValue == true);
+                if FireCallback ~= false then
+                    Callback(Location[Flag]);
+                end
                 UpdateVisualState();
+            end
+
+            local function Click()
+                SetToggleState(not Location[Flag], true);
             end
 
             ToggleButton.MouseButton1Click:Connect(Click)
@@ -360,6 +391,12 @@ local Defaults; do
                 Update = UpdateVisualState;
             });
 
+            Library:RegisterFlagController(Location, Flag, {
+                Set = function(Value, FireCallback)
+                    SetToggleState(Value, FireCallback ~= false);
+                end
+            });
+
             if Location[Flag] == true then
                 Callback(Location[Flag])
             end
@@ -367,9 +404,7 @@ local Defaults; do
             self:Resize();
             return {
                 Set = function(self, b)
-                    Location[Flag] = b;
-                    Callback(Location[Flag])
-                    UpdateVisualState();
+                    SetToggleState(b, true);
                 end,
                 Get = function()
                     return Location[Flag];
@@ -415,7 +450,7 @@ local Defaults; do
             local ValueType = Options.type or "";
             local Default = Options.default or "";
             local Location = Options.location or self.flags;
-            local Flag     = Options.flag or "";
+            local Flag     = self:ResolveFlag(Options.flag, Name, "Box");
             local Callback = Callback or function() end;
             local Min      = Options.min or 0;
             local Max      = Options.max or 9e9;
@@ -433,7 +468,6 @@ local Defaults; do
                 Default = tostring(Default);
                 Location[Flag] = Default;
             end
-            Library:RegisterFlag(Location, Flag);
 
             local CheckData = Library:Create('Frame', {
                 BackgroundTransparency = 1;
@@ -470,22 +504,41 @@ local Defaults; do
             });
         
             local BoxData = CheckData:FindFirstChild(Name):FindFirstChild('Box');
-            BoxData.FocusLost:Connect(function(e)
+
+            local function SetBoxValue(NewValue, FireCallback, EventData)
                 local Old = Location[Flag];
                 if ValueType == "number" then
-                    local Numeric = tonumber(BoxData.Text)
+                    local Numeric = tonumber(NewValue);
                     if (not Numeric) then
-                        BoxData.Text = tostring(Old or "");
+                        Location[Flag] = "";
+                        BoxData.Text = "";
                     else
                         local Clamped = math.clamp(Numeric, Min, Max);
                         Location[Flag] = Clamped;
                         BoxData.Text = tostring(Clamped);
                     end
                 else
-                    Location[Flag] = tostring(BoxData.Text)
+                    local TextValue = tostring(NewValue or "");
+                    Location[Flag] = TextValue;
+                    BoxData.Text = TextValue;
                 end
 
-                Callback(Location[Flag], Old, e)
+                if FireCallback ~= false then
+                    Callback(Location[Flag], Old, EventData);
+                end
+            end
+
+            BoxData.FocusLost:Connect(function(e)
+                if ValueType == "number" then
+                    local Numeric = tonumber(BoxData.Text)
+                    if (not Numeric) then
+                        BoxData.Text = tostring(Location[Flag] or "");
+                    else
+                        SetBoxValue(Numeric, true, e);
+                    end
+                else
+                    SetBoxValue(BoxData.Text, true, e);
+                end
             end)
             
             if ValueType == 'number' then
@@ -496,6 +549,12 @@ local Defaults; do
                     end
                 end)
             end
+
+            Library:RegisterFlagController(Location, Flag, {
+                Set = function(Value, FireCallback)
+                    SetBoxValue(Value, FireCallback ~= false, nil);
+                end
+            });
             
             self:Resize();
             return BoxData
@@ -505,7 +564,7 @@ local Defaults; do
             Options = Options or {};
             local Location     = Options.location or self.flags;
             local KeyboardOnly = Options.kbonly or false
-            local Flag         = Options.flag or "";
+            local Flag         = self:ResolveFlag(Options.flag, Name, "Bind");
             local Callback     = Callback or function() end;
             local Default      = Options.default;
 
@@ -709,7 +768,6 @@ local Defaults; do
             if NormalizedDefault then
                 Location[Flag] = NormalizedDefault;
             end
-            Library:RegisterFlag(Location, Flag);
 
             local DisplayName = GetInputName(Location[Flag]);
             local CheckData = Library:Create('Frame', {
@@ -860,6 +918,12 @@ local Defaults; do
 	                return Location[Flag];
 	            end
 
+                Library:RegisterFlagController(Location, Flag, {
+                    Set = function(NewBinding, FireCallback)
+                        ApiData:Set(NewBinding, FireCallback == true);
+                    end
+                });
+
 	            return ApiData;
 	        end
     
@@ -967,20 +1031,19 @@ local Defaults; do
 
             Options = Options or {};
             local Location = Options.location or self.flags;
-            local Flag = Options.flag or "";
+            local Flag = self:ResolveFlag(Options.flag, Name, "ColorPicker");
             local Callback = Callback or function() end;
             local TransparencyLocation = Options.transparencylocation or Location;
             local TransparencyFlag = Options.transparencyflag;
+            if TransparencyFlag == nil or tostring(TransparencyFlag) == "" then
+                TransparencyFlag = Flag .. "_Transparency";
+            end
 
             local Default = Options.default or Options.color or Color3.fromRGB(255, 0, 0);
             if typeof(Default) ~= "Color3" then
                 Default = Color3.fromRGB(255, 0, 0);
             end
             local DefaultTransparency = math.clamp(tonumber(Options.transparency or Options.alpha or 0) or 0, 0, 1);
-            Library:RegisterFlag(Location, Flag);
-            if TransparencyFlag ~= nil and tostring(TransparencyFlag) ~= "" then
-                Library:RegisterFlag(TransparencyLocation, TransparencyFlag);
-            end
 
             local PickerSize = math.clamp(tonumber(Options.size) or 90, 70, 130);
             local WheelImage = Options.wheelImage or "rbxassetid://6020299385";
@@ -1571,6 +1634,19 @@ local Defaults; do
             ApplyColor(Default, false, DefaultTransparency);
             SetPopupVisible(false, true);
 
+            Library:RegisterFlagController(Location, Flag, {
+                Set = function(NewColor, FireCallback)
+                    ApplyColor(NewColor, FireCallback ~= false, CurrentTransparency);
+                end
+            });
+            if TransparencyFlag ~= nil and tostring(TransparencyFlag) ~= "" then
+                Library:RegisterFlagController(TransparencyLocation, TransparencyFlag, {
+                    Set = function(NewTransparency, FireCallback)
+                        ApplyState(Hue, Saturation, Value, NewTransparency, FireCallback ~= false);
+                    end
+                });
+            end
+
             self:Resize();
             return {
                 Set = function(_, NewColor, FireCallback)
@@ -1608,9 +1684,8 @@ local Defaults; do
             local Location = Options.location or self.flags;
             local Precise  = Options.precise  or false -- e.g 0, 1 vs 0, 0.1, 0.2, ...
             local Decimals = math.clamp(math.floor(tonumber(Options.decimals) or 2), 0, 6);
-            local Flag     = Options.flag or "";
+            local Flag     = self:ResolveFlag(Options.flag, Name, "Slider");
             local Callback = Callback or function() end
-            Library:RegisterFlag(Location, Flag);
 
             if Min > Max then
                 Min, Max = Max, Min;
@@ -1778,6 +1853,12 @@ local Defaults; do
 
             SetValue(Default or Min, false);
 
+            Library:RegisterFlagController(Location, Flag, {
+                Set = function(NewValue, FireCallback)
+                    SetValue(NewValue, FireCallback ~= false);
+                end
+            });
+
             self:Resize();
             return {
                 Set = function(self, Value)
@@ -1792,10 +1873,9 @@ local Defaults; do
         function Types:SearchBox(Text, Options, Callback)
             Options = Options or {};
             local ListData = Options.list or {};
-            local Flag = Options.flag or "";
+            local Flag = self:ResolveFlag(Options.flag, Text, "SearchBox");
             local Location = Options.location or self.flags;
             local Callback = Callback or function() end;
-            Library:RegisterFlag(Location, Flag);
 
             local Busy = false;
             local BoxData = Library:Create('Frame', {
@@ -1907,6 +1987,26 @@ local Defaults; do
                 ListData = (type(NewList) == "table" and NewList or {});
                 Rebuild("")
             end
+
+            local function SetSearchValue(NewValue, FireCallback)
+                local TextValue = tostring(NewValue or "");
+                Busy = true;
+                InputBox.Text = TextValue;
+                Busy = false;
+
+                Location[Flag] = TextValue;
+                Rebuild(TextValue);
+                if FireCallback ~= false then
+                    Callback(Location[Flag]);
+                end
+            end
+
+            Library:RegisterFlagController(Location, Flag, {
+                Set = function(NewValue, FireCallback)
+                    SetSearchValue(NewValue, FireCallback ~= false);
+                end
+            });
+
             self:Resize();
             return Reload, InputBox;
         end
@@ -1914,13 +2014,12 @@ local Defaults; do
         function Types:Dropdown(Name, Options, Callback)
             Options = Options or {};
             local Location = Options.location or self.flags;
-            local Flag = Options.flag or "";
+            local Flag = self:ResolveFlag(Options.flag, Name, "Dropdown");
             local Callback = Callback or function() end;
             local ListData = (type(Options.list) == "table" and Options.list or {});
             local DefaultSelection = ListData[1] or "";
 
             Location[Flag] = DefaultSelection
-            Library:RegisterFlag(Location, Flag);
             local CheckData = Library:Create('Frame', {
                 BackgroundTransparency = 1;
                 Size = UDim2.new(1, 0, 0, 25);
@@ -1966,6 +2065,17 @@ local Defaults; do
             local SelectionLabel = Label:FindFirstChild('Selection');
             local Input;
             local ActiveContainer;
+
+            local function SetDropdownValue(NewValue, FireCallback)
+                if NewValue ~= nil then
+                    Location[Flag] = tostring(NewValue);
+                    SelectionLabel.Text = tostring(Location[Flag]);
+                    SelectionLabel.TextColor3 = Library.Options.textcolor;
+                    if FireCallback ~= false then
+                        Callback(Location[Flag]);
+                    end
+                end
+            end
             
             local function IsInGui(Frame)
                 if (not Frame) then
@@ -2065,8 +2175,7 @@ local Defaults; do
                     })
                     
                     Btn.MouseButton1Click:Connect(function()
-                        Location[Flag] = tostring(Btn.Text);
-                        Callback(Location[Flag]);
+                        SetDropdownValue(Btn.Text, true);
                         CloseDropdown(true);
                     end)
                 end
@@ -2089,20 +2198,19 @@ local Defaults; do
                 SelectionLabel.TextColor3 = Library.Options.textcolor;
             end
 
+            Library:RegisterFlagController(Location, Flag, {
+                Set = function(NewValue, FireCallback)
+                    SetDropdownValue(NewValue, FireCallback ~= false);
+                end
+            });
+
             return {
                 Refresh = Reload;
                 Get = function()
                     return Location[Flag];
                 end,
                 Set = function(_, Value, FireCallback)
-                    if Value ~= nil then
-                        Location[Flag] = Value;
-                        SelectionLabel.Text = tostring(Value);
-                        SelectionLabel.TextColor3 = Library.Options.textcolor;
-                        if FireCallback ~= false then
-                            Callback(Location[Flag]);
-                        end
-                    end
+                    SetDropdownValue(Value, FireCallback ~= false);
                 end
             }
         end
@@ -2111,10 +2219,9 @@ local Defaults; do
             Options = Options or {};
 
             local Location = Options.location or self.flags;
-            local Flag = Options.flag or "";
+            local Flag = self:ResolveFlag(Options.flag, Name, "MultiSelect");
             local Callback = Callback or function() end;
             local ListData = Options.list or {};
-            Library:RegisterFlag(Location, Flag);
 
             local SearchEnabled = Options.search ~= false;
             local SortList = Options.sort ~= false;
@@ -2628,6 +2735,25 @@ local Defaults; do
                 Render();
             end
 
+            local function SetMultiSelectValue(NewValue, FireCallback)
+                for Item in next, SelectedData do
+                    SelectedData[Item] = nil;
+                end
+
+                if type(NewValue) == "table" then
+                    ApplySelectionData(NewValue);
+                end
+
+                UpdateSelection(FireCallback ~= false);
+                Render();
+            end
+
+            Library:RegisterFlagController(Location, Flag, {
+                Set = function(NewValue, FireCallback)
+                    SetMultiSelectValue(NewValue, FireCallback ~= false);
+                end
+            });
+
             return ApiData;
         end
     end
@@ -2994,6 +3120,34 @@ local Defaults; do
         return true;
     end
 
+    function Library:RegisterFlagController(Location, Flag, Controller)
+        if type(Location) ~= "table" then
+            return false;
+        end
+
+        local FlagName = tostring(Flag or "");
+        if FlagName == "" then
+            return false;
+        end
+
+        self:RegisterFlag(Location, FlagName);
+
+        self.FlagControllers = self.FlagControllers or {};
+        local Entries = self.FlagControllers[FlagName];
+        if type(Entries) ~= "table" then
+            Entries = {};
+            self.FlagControllers[FlagName] = Entries;
+        end
+
+        if type(Controller) == "table" then
+            Controller.Location = Location;
+            table.insert(Entries, Controller);
+            return true;
+        end
+
+        return false;
+    end
+
     function Library:CollectScriptPresetData()
         local Output = {};
         local Flags = self.RegisteredFlags or {};
@@ -3043,17 +3197,37 @@ local Defaults; do
             end
         end
 
+        local ControllersByFlag = self.FlagControllers or {};
         for Key, Value in next, Data do
             local FlagName = tostring(Key or "");
             if FlagName ~= "" then
-                local Entry = Flags[FlagName];
                 local Applied = false;
-                local Locations = Entry and Entry.Locations;
-                if type(Locations) == "table" then
-                    for _, Location in next, Locations do
-                        if type(Location) == "table" then
-                            Location[FlagName] = Value;
-                            Applied = true;
+                local Controllers = ControllersByFlag[FlagName];
+                if type(Controllers) == "table" then
+                    for Index = #Controllers, 1, -1 do
+                        local Controller = Controllers[Index];
+                        local SetFunction = Controller and Controller.Set;
+                        local Location = Controller and Controller.Location;
+                        if type(SetFunction) == "function" and type(Location) == "table" then
+                            local OkSet = pcall(SetFunction, Value, true);
+                            if OkSet then
+                                Applied = true;
+                            end
+                        else
+                            table.remove(Controllers, Index);
+                        end
+                    end
+                end
+
+                if not Applied then
+                    local Entry = Flags[FlagName];
+                    local Locations = Entry and Entry.Locations;
+                    if type(Locations) == "table" then
+                        for _, Location in next, Locations do
+                            if type(Location) == "table" then
+                                Location[FlagName] = Value;
+                                Applied = true;
+                            end
                         end
                     end
                 end
