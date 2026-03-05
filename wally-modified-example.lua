@@ -52,6 +52,7 @@ local WindowOptions = {
 
     autoscaletext = true,
     mintextsize = 10,
+    itemspacing = 2, -- spacing (pixels) between methods in each window
 }
 
 local MainWindow = Library:CreateWindow("Wally Practical - Main", WindowOptions)
