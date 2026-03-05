@@ -447,7 +447,7 @@ local Defaults; do
                     return nil;
                 end
 
-                if InputObject.UserInputType == Enum.UserInputType.Keyboard then
+                if InputObject.UserInputType == Enum.UserInputType.Keyboard or InputObject.UserInputType == Enum.UserInputType.TextInput then
                     local KeyCode = InputObject.KeyCode;
                     if KeyCode and KeyCode ~= Enum.KeyCode.Unknown and (not Banned[KeyCode.Name]) then
                         return KeyCode;
@@ -570,10 +570,15 @@ local Defaults; do
                 Library.Binding = true
 
                 local Ok, ErrorData = pcall(function()
+                    local FocusedTextBox = UserInputService:GetFocusedTextBox();
+                    if FocusedTextBox then
+                        FocusedTextBox:ReleaseFocus();
+                    end
+
                     ButtonData.Text = "..."
                     while Library.Binding do
                         local InputObject = UserInputService.InputBegan:Wait();
-                        if InputObject.UserInputType == Enum.UserInputType.Keyboard then
+                        if InputObject.UserInputType == Enum.UserInputType.Keyboard or InputObject.UserInputType == Enum.UserInputType.TextInput then
                             if InputObject.KeyCode == Enum.KeyCode.Escape then
                                 break;
                             end
@@ -2376,7 +2381,7 @@ local Defaults; do
 
         local KeyType = typeof(Bind);
         if KeyType == "InputObject" then
-            if Bind.UserInputType == Enum.UserInputType.Keyboard then
+            if Bind.UserInputType == Enum.UserInputType.Keyboard or Bind.UserInputType == Enum.UserInputType.TextInput then
                 return Bind.KeyCode;
             end
             return Bind.UserInputType;
