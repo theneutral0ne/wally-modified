@@ -4,7 +4,7 @@ local Debris = game:GetService("Debris");
 local CoreGui = game:GetService("CoreGui");
 local HttpService = game:GetService("HttpService");
 
-local Library = {Count = 0, Queue = {}, Callbacks = {}, RainbowTable = {}, Toggled = true, Binds = {}, Build = "2026-03-05.8", BindDebug = false};
+local Library = {Count = 0, Queue = {}, Callbacks = {}, RainbowTable = {}, Toggled = true, Binds = {}, Build = "2026-03-05.9", BindDebug = false};
 local Defaults; do
     local Dragger = {}; do
         function Dragger.New(Frame)
@@ -63,11 +63,16 @@ local Defaults; do
         end)
     end
     
-    local Types = {}; do
-        Types.__index = Types;
-        function Types.Window(Name, Options)
-            Library.Count = Library.Count + 1
-            local NewWindow = Library:Create('Frame', {
+	    local Types = {}; do
+	        Types.__index = Types;
+	        function Types.Window(Name, Options)
+	            Library.Count = Library.Count + 1
+	            local ItemSpacing = math.clamp(
+	                math.floor((tonumber(Options.itemspacing or Options.methodspacing or Options.controlspacing or Options.spacing) or 0) + 0.5),
+	                0,
+	                40
+	            );
+	            local NewWindow = Library:Create('Frame', {
                 Name = Name;
                 Size = UDim2.new(0, 190, 0, 30);
                 BackgroundColor3 = Options.topcolor;
@@ -117,12 +122,13 @@ local Defaults; do
                     BorderSizePixel = 0;
                     BackgroundColor3 = Options.bgcolor;
                     ClipsDescendants = false;
-                    Library:Create('UIListLayout', {
-                        Name = 'List';
-                        SortOrder = Enum.SortOrder.LayoutOrder;
-                    })
-                });
-            })
+	                    Library:Create('UIListLayout', {
+	                        Name = 'List';
+	                        SortOrder = Enum.SortOrder.LayoutOrder;
+	                        Padding = UDim.new(0, ItemSpacing);
+	                    })
+	                });
+	            })
 
             local ContainerData = NewWindow:FindFirstChild("ContainerData");
             local ListLayout = ContainerData and ContainerData:FindFirstChild("List");
@@ -2983,12 +2989,13 @@ local Defaults; do
         textcolor      = Color3.fromRGB(255, 255, 255);
         titletextcolor = Color3.fromRGB(255, 255, 255);
 
-        autoscaletext = true;
-        mintextsize = 10;
+	        autoscaletext = true;
+	        mintextsize = 10;
+	        itemspacing = 0;
 
-        placeholdercolor = Color3.fromRGB(255, 255, 255);
-        titlestrokecolor = Color3.fromRGB(0, 0, 0);
-    }
+	        placeholdercolor = Color3.fromRGB(255, 255, 255);
+	        titlestrokecolor = Color3.fromRGB(0, 0, 0);
+	    }
 	
     function Library:CreateWindow(Name, Options)
 		
