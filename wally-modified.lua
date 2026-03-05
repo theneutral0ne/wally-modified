@@ -4,7 +4,6 @@ local Debris = game:GetService("Debris");
 local CoreGui = game:GetService("CoreGui");
 local HttpService = game:GetService("HttpService");
 local TextService = game:GetService("TextService");
-local GuiService = game:GetService("GuiService");
 
 local Library = {
     Count = 0,
@@ -19,7 +18,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.31",
+    Build = "2026-03-05.32",
     BindDebug = false
 };
 local Defaults; do
@@ -1395,56 +1394,11 @@ local Defaults; do
                 return Radius * WheelRadiusScale;
             end
 
-            local function GetPointerCandidates(InputObject)
-                local Candidates = {};
-                local function AddCandidate(Point)
-                    if typeof(Point) == "Vector2" then
-                        Candidates[#Candidates + 1] = Point;
-                    end
-                end
-
-                local MousePos = UserInputService:GetMouseLocation();
-                AddCandidate(MousePos);
-
+            local function GetPointerPosition(InputObject, _)
                 if InputObject and typeof(InputObject.Position) == "Vector3" then
-                    AddCandidate(Vector2.new(InputObject.Position.X, InputObject.Position.Y));
+                    return Vector2.new(InputObject.Position.X, InputObject.Position.Y);
                 end
-
-                local TopLeftInset = select(1, GuiService:GetGuiInset());
-                if typeof(TopLeftInset) == "Vector2" then
-                    AddCandidate(MousePos - TopLeftInset);
-                    if InputObject and typeof(InputObject.Position) == "Vector3" then
-                        local InputPos = Vector2.new(InputObject.Position.X, InputObject.Position.Y);
-                        AddCandidate(InputPos - TopLeftInset);
-                    end
-                end
-
-                return Candidates;
-            end
-
-            local function GetPointerPosition(InputObject, PreferredGui)
-                local Candidates = GetPointerCandidates(InputObject);
-                if #Candidates == 0 then
-                    return UserInputService:GetMouseLocation();
-                end
-
-                if (not PreferredGui) or (not PreferredGui.Parent) then
-                    return Candidates[1];
-                end
-
-                local Center = PreferredGui.AbsolutePosition + (PreferredGui.AbsoluteSize * 0.5);
-                local BestPoint = Candidates[1];
-                local BestDistance = (BestPoint - Center).Magnitude;
-                for Index = 2, #Candidates do
-                    local Candidate = Candidates[Index];
-                    local Distance = (Candidate - Center).Magnitude;
-                    if Distance < BestDistance then
-                        BestDistance = Distance;
-                        BestPoint = Candidate;
-                    end
-                end
-
-                return BestPoint;
+                return UserInputService:GetMouseLocation();
             end
 
             local function HueToWheelAngle(HueValue)
