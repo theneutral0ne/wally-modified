@@ -679,17 +679,21 @@ local Defaults; do
             local Location = Options.location or self.flags;
             local Flag = Options.flag or "";
             local Callback = Callback or function() end;
+            local TransparencyLocation = Options.transparencylocation or Location;
+            local TransparencyFlag = Options.transparencyflag;
 
             local Default = Options.default or Options.color or Color3.fromRGB(255, 0, 0);
             if typeof(Default) ~= "Color3" then
                 Default = Color3.fromRGB(255, 0, 0);
             end
+            local DefaultTransparency = math.clamp(tonumber(Options.transparency or Options.alpha or 0) or 0, 0, 1);
 
             local PickerSize = math.clamp(tonumber(Options.size) or 90, 70, 130);
             local WheelImage = Options.wheelImage or "rbxassetid://6020299385";
             local WheelTop = 24;
             local ShadeTop = WheelTop + PickerSize + 6;
-            local HexTop = ShadeTop + 20;
+            local AlphaTop = ShadeTop + 20;
+            local HexTop = AlphaTop + 20;
             local RgbTop = HexTop + 22;
             local ControlHeight = RgbTop + 22 + 4;
 
@@ -787,6 +791,35 @@ local Defaults; do
                     });
                 });
                 Library:Create('Frame', {
+                    Name = 'AlphaBar';
+                    Position = UDim2.new(0.5, -math.floor(PickerSize * 0.5), 0, AlphaTop);
+                    Size = UDim2.new(0, PickerSize, 0, 14);
+                    BackgroundColor3 = Library.Options.bgcolor;
+                    BorderColor3 = Library.Options.bordercolor;
+                    ClipsDescendants = true;
+                    Library:Create('Frame', {
+                        Name = 'AlphaTint';
+                        Position = UDim2.new(0, 0, 0, 0);
+                        Size = UDim2.new(1, 0, 1, 0);
+                        BorderSizePixel = 0;
+                        BackgroundColor3 = Default;
+                        Library:Create('UIGradient', {
+                            Transparency = NumberSequence.new({
+                                NumberSequenceKeypoint.new(0, 0);
+                                NumberSequenceKeypoint.new(1, 1);
+                            });
+                        });
+                    });
+                    Library:Create('Frame', {
+                        Name = 'AlphaKnob';
+                        AnchorPoint = Vector2.new(0.5, 0.5);
+                        Position = UDim2.new(0, 0, 0.5, 0);
+                        Size = UDim2.new(0, 6, 1, 2);
+                        BackgroundColor3 = Library.Options.textcolor;
+                        BorderColor3 = Library.Options.strokecolor;
+                    });
+                });
+                Library:Create('Frame', {
                     Name = 'HexRow';
                     Position = UDim2.new(0, 5, 0, HexTop);
                     Size = UDim2.new(1, -10, 0, 20);
@@ -867,14 +900,19 @@ local Defaults; do
             local ShadeBar = CheckData:FindFirstChild("ShadeBar");
             local ShadeTint = ShadeBar and ShadeBar:FindFirstChild("ShadeTint");
             local ShadeKnob = ShadeBar and ShadeBar:FindFirstChild("ShadeKnob");
+            local AlphaBar = CheckData:FindFirstChild("AlphaBar");
+            local AlphaTint = AlphaBar and AlphaBar:FindFirstChild("AlphaTint");
+            local AlphaKnob = AlphaBar and AlphaBar:FindFirstChild("AlphaKnob");
             local HexInput = CheckData:FindFirstChild("HexRow") and CheckData.HexRow:FindFirstChild("Input");
             local RgbInput = CheckData:FindFirstChild("RgbRow") and CheckData.RgbRow:FindFirstChild("Input");
 
             local WheelDragging = false;
             local ShadeDragging = false;
+            local AlphaDragging = false;
 
             local Hue, Saturation, Value = Default:ToHSV();
             local CurrentColor = Default;
+            local CurrentTransparency = DefaultTransparency;
 
             local function Clamp01(Number)
                 return math.clamp(tonumber(Number) or 0, 0, 1);
@@ -960,32 +998,46 @@ local Defaults; do
                     ShadeKnob.Position = UDim2.new(1 - Value, 0, 0.5, 0);
                 end
 
+                if AlphaTint then
+                    AlphaTint.BackgroundColor3 = CurrentColor;
+                end
+
+                if AlphaKnob then
+                    AlphaKnob.Position = UDim2.new(CurrentTransparency, 0, 0.5, 0);
+                end
+
                 if Preview then
                     Preview.BackgroundColor3 = CurrentColor;
+                    Preview.BackgroundTransparency = CurrentTransparency;
                 end
             end
 
-            local function ApplyHsv(NewHue, NewSaturation, NewValue, FireCallback)
+            local function ApplyState(NewHue, NewSaturation, NewValue, NewTransparency, FireCallback)
                 Hue = (tonumber(NewHue) or Hue or 0) % 1;
                 Saturation = Clamp01(NewSaturation or Saturation);
                 Value = Clamp01(NewValue or Value);
+                CurrentTransparency = Clamp01(NewTransparency or CurrentTransparency);
                 CurrentColor = Color3.fromHSV(Hue, Saturation, Value);
 
                 Location[Flag] = CurrentColor;
+                if TransparencyFlag ~= nil and tostring(TransparencyFlag) ~= "" then
+                    TransparencyLocation[TransparencyFlag] = CurrentTransparency;
+                end
+
                 UpdateVisuals();
                 UpdateInputs();
 
                 if FireCallback ~= false then
-                    Callback(CurrentColor);
+                    Callback(CurrentColor, CurrentTransparency);
                 end
             end
 
-            local function ApplyColor(NewColor, FireCallback)
+            local function ApplyColor(NewColor, FireCallback, NewTransparency)
                 if typeof(NewColor) ~= "Color3" then
                     return;
                 end
                 local NewHue, NewSaturation, NewValue = NewColor:ToHSV();
-                ApplyHsv(NewHue, NewSaturation, NewValue, FireCallback);
+                ApplyState(NewHue, NewSaturation, NewValue, NewTransparency, FireCallback);
             end
 
             local function UpdateFromWheelMouse()
@@ -1002,7 +1054,7 @@ local Defaults; do
 
                 local NewSaturation = (Radius > 0 and (Magnitude / Radius) or 0);
                 local NewHue = (math.atan2(Offset.Y, Offset.X) / (2 * math.pi)) % 1;
-                ApplyHsv(NewHue, NewSaturation, Value, true);
+                ApplyState(NewHue, NewSaturation, Value, CurrentTransparency, true);
             end
 
             local function UpdateFromShadeMouse()
@@ -1010,7 +1062,15 @@ local Defaults; do
                 local ShadeWidth = math.max(ShadeBar.AbsoluteSize.X, 1);
                 local Percent = (MousePos.X - ShadeBar.AbsolutePosition.X) / ShadeWidth;
                 Percent = math.clamp(Percent, 0, 1);
-                ApplyHsv(Hue, Saturation, 1 - Percent, true);
+                ApplyState(Hue, Saturation, 1 - Percent, CurrentTransparency, true);
+            end
+
+            local function UpdateFromAlphaMouse()
+                local MousePos = UserInputService:GetMouseLocation();
+                local AlphaWidth = math.max(AlphaBar.AbsoluteSize.X, 1);
+                local Percent = (MousePos.X - AlphaBar.AbsolutePosition.X) / AlphaWidth;
+                Percent = math.clamp(Percent, 0, 1);
+                ApplyState(Hue, Saturation, Value, Percent, true);
             end
 
             local function IsPointerInput(InputObject)
@@ -1031,6 +1091,13 @@ local Defaults; do
                 end
             end);
 
+            AlphaBar.InputBegan:Connect(function(Input)
+                if IsPointerInput(Input) then
+                    AlphaDragging = true;
+                    UpdateFromAlphaMouse();
+                end
+            end);
+
             UserInputService.InputChanged:Connect(function(Input)
                 if Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch then
                     if WheelDragging then
@@ -1038,6 +1105,9 @@ local Defaults; do
                     end
                     if ShadeDragging then
                         UpdateFromShadeMouse();
+                    end
+                    if AlphaDragging then
+                        UpdateFromAlphaMouse();
                     end
                 end
             end);
@@ -1050,13 +1120,16 @@ local Defaults; do
                     if ShadeDragging then
                         ShadeDragging = false;
                     end
+                    if AlphaDragging then
+                        AlphaDragging = false;
+                    end
                 end
             end);
 
             HexInput.FocusLost:Connect(function()
                 local Parsed = ParseHex(HexInput.Text);
                 if Parsed then
-                    ApplyColor(Parsed, true);
+                    ApplyColor(Parsed, true, CurrentTransparency);
                 else
                     UpdateInputs();
                 end
@@ -1065,27 +1138,39 @@ local Defaults; do
             RgbInput.FocusLost:Connect(function()
                 local Parsed = ParseRgb(RgbInput.Text);
                 if Parsed then
-                    ApplyColor(Parsed, true);
+                    ApplyColor(Parsed, true, CurrentTransparency);
                 else
                     UpdateInputs();
                 end
             end);
 
-            ApplyColor(Default, false);
+            ApplyColor(Default, false, DefaultTransparency);
 
             self:Resize();
             return {
                 Set = function(_, NewColor, FireCallback)
-                    ApplyColor(NewColor, FireCallback ~= false);
+                    ApplyColor(NewColor, FireCallback ~= false, CurrentTransparency);
                 end,
                 Get = function()
                     return Location[Flag];
                 end,
                 SetHSV = function(_, NewHue, NewSaturation, NewValue, FireCallback)
-                    ApplyHsv(NewHue, NewSaturation, NewValue, FireCallback ~= false);
+                    ApplyState(NewHue, NewSaturation, NewValue, CurrentTransparency, FireCallback ~= false);
                 end,
                 GetHSV = function()
                     return Hue, Saturation, Value;
+                end,
+                SetTransparency = function(_, NewTransparency, FireCallback)
+                    ApplyState(Hue, Saturation, Value, NewTransparency, FireCallback ~= false);
+                end,
+                GetTransparency = function()
+                    return CurrentTransparency;
+                end,
+                SetAlpha = function(_, NewTransparency, FireCallback)
+                    ApplyState(Hue, Saturation, Value, NewTransparency, FireCallback ~= false);
+                end,
+                GetAlpha = function()
+                    return CurrentTransparency;
                 end
             };
         end
@@ -2109,6 +2194,36 @@ local Defaults; do
                 end
             end
         end
+
+        local IsAutoScaleClass = (ClassName == "TextLabel" or ClassName == "TextButton");
+        if IsAutoScaleClass then
+            local AutoScaleEnabled = true;
+            if Library.Options and Library.Options.autoscaletext ~= nil then
+                AutoScaleEnabled = Library.Options.autoscaletext;
+            end
+
+            local ShouldScale = (Data.TextScaled ~= nil and Data.TextScaled) or (Data.TextScaled == nil and AutoScaleEnabled);
+            if ShouldScale then
+                Obj.TextScaled = true;
+                Obj.TextTruncate = Enum.TextTruncate.AtEnd;
+
+                local DesiredMax = math.floor((tonumber(Data.TextSize) or tonumber(Obj.TextSize) or (Library.Options and Library.Options.fontsize) or 17) + 0.5);
+                local DesiredMin = math.floor((tonumber(Library.Options and Library.Options.mintextsize) or 10) + 0.5);
+                local MaxTextSize = math.max(1, DesiredMax);
+                local MinTextSize = math.max(1, math.min(DesiredMin, MaxTextSize));
+
+                local ExistingConstraint = Obj:FindFirstChildOfClass("UITextSizeConstraint");
+                if ExistingConstraint then
+                    ExistingConstraint.MinTextSize = MinTextSize;
+                    ExistingConstraint.MaxTextSize = MaxTextSize;
+                else
+                    local SizeConstraint = Instance.new("UITextSizeConstraint");
+                    SizeConstraint.MinTextSize = MinTextSize;
+                    SizeConstraint.MaxTextSize = MaxTextSize;
+                    SizeConstraint.Parent = Obj;
+                end
+            end
+        end
         
         Obj.Parent = Data.Parent;
         return Obj
@@ -2139,6 +2254,9 @@ local Defaults; do
 
         textcolor      = Color3.fromRGB(255, 255, 255);
         titletextcolor = Color3.fromRGB(255, 255, 255);
+
+        autoscaletext = true;
+        mintextsize = 10;
 
         placeholdercolor = Color3.fromRGB(255, 255, 255);
         titlestrokecolor = Color3.fromRGB(0, 0, 0);
