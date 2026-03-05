@@ -3,7 +3,7 @@ local RunService = game:GetService("RunService");
 local Debris = game:GetService("Debris");
 local CoreGui = game:GetService("CoreGui");
 
-local Library = {Count = 0, Queue = {}, Callbacks = {}, RainbowTable = {}, Toggled = true, Binds = {}, Build = "2026-03-05.4", BindDebug = true};
+local Library = {Count = 0, Queue = {}, Callbacks = {}, RainbowTable = {}, Toggled = true, Binds = {}, Build = "2026-03-05.5", BindDebug = true};
 local Defaults; do
     local Dragger = {}; do
         function Dragger.New(Frame)
@@ -448,6 +448,28 @@ local Defaults; do
                 end
             end
 
+            local function ReadInputObject(InputObject)
+                local ValueType = typeof(InputObject);
+
+                local OkUserInputType, UserInputType = pcall(function()
+                    return InputObject.UserInputType;
+                end);
+
+                local OkKeyCode, KeyCode = pcall(function()
+                    return InputObject.KeyCode;
+                end);
+
+                if not OkUserInputType then
+                    return nil, nil, ValueType;
+                end
+
+                if not OkKeyCode then
+                    KeyCode = nil;
+                end
+
+                return UserInputType, KeyCode, ValueType;
+            end
+
             local function DetectPressedKeyboardKey()
                 for _, KeyCode in next, Enum.KeyCode:GetEnumItems() do
                     if KeyCode ~= Enum.KeyCode.Unknown and (not Banned[KeyCode.Name]) and (not string.find(KeyCode.Name, "MouseButton", 1, true)) then
@@ -460,13 +482,13 @@ local Defaults; do
             end
 
             local function GetBindingFromInputObject(InputObject)
-                if typeof(InputObject) ~= "InputObject" then
+                local UserInputType, KeyCode = ReadInputObject(InputObject);
+                if not UserInputType then
                     return nil;
                 end
 
-                if InputObject.UserInputType == Enum.UserInputType.Keyboard or InputObject.UserInputType == Enum.UserInputType.TextInput then
-                    local KeyCode = InputObject.KeyCode;
-                    if KeyCode and KeyCode ~= Enum.KeyCode.Unknown and (not Banned[KeyCode.Name]) then
+                if UserInputType == Enum.UserInputType.Keyboard or UserInputType == Enum.UserInputType.TextInput then
+                    if typeof(KeyCode) == "EnumItem" and KeyCode.EnumType == Enum.KeyCode and KeyCode ~= Enum.KeyCode.Unknown and (not Banned[KeyCode.Name]) then
                         return KeyCode;
                     end
 
@@ -478,8 +500,8 @@ local Defaults; do
                     return nil;
                 end
 
-                if (not KeyboardOnly) and Allowed[InputObject.UserInputType.Name] then
-                    return InputObject.UserInputType;
+                if typeof(UserInputType) == "EnumItem" and UserInputType.EnumType == Enum.UserInputType and (not KeyboardOnly) and Allowed[UserInputType.Name] then
+                    return UserInputType;
                 end
 
                 return nil;
@@ -601,19 +623,28 @@ local Defaults; do
                     ButtonData.Text = "..."
                     while Library.Binding do
                         local InputObject, Gpe = UserInputService.InputBegan:Wait();
+                        local UserInputType, KeyCode, InputValueType = ReadInputObject(InputObject);
+
+                        local KeyName = "nil";
+                        if typeof(KeyCode) == "EnumItem" then
+                            KeyName = KeyCode.Name;
+                        end
+
                         DebugBindLog(string.format(
-                            "Captured Input | UserInputType=%s | KeyCode=%s | Gpe=%s",
-                            tostring(InputObject.UserInputType),
-                            tostring(InputObject.KeyCode),
+                            "Captured Input | TypeOf=%s | UserInputType=%s | KeyCode=%s | KeyName=%s | Gpe=%s",
+                            tostring(InputValueType),
+                            tostring(UserInputType),
+                            tostring(KeyCode),
+                            tostring(KeyName),
                             tostring(Gpe)
                         ));
 
-                        if InputObject.UserInputType == Enum.UserInputType.Keyboard or InputObject.UserInputType == Enum.UserInputType.TextInput then
-                            if InputObject.KeyCode == Enum.KeyCode.Escape then
+                        if UserInputType == Enum.UserInputType.Keyboard or UserInputType == Enum.UserInputType.TextInput then
+                            if KeyCode == Enum.KeyCode.Escape then
                                 DebugBindLog("Rebind cancelled with Escape");
                                 break;
                             end
-                            if InputObject.KeyCode == Enum.KeyCode.Backspace or InputObject.KeyCode == Enum.KeyCode.Delete then
+                            if KeyCode == Enum.KeyCode.Backspace or KeyCode == Enum.KeyCode.Delete then
                                 Location[Flag] = nil;
                                 DebugBindLog("Binding cleared with Backspace/Delete");
                                 break;
@@ -1299,11 +1330,12 @@ local Defaults; do
                             Text = Default;
                             BackgroundTransparency = 1;
                             TextColor3 = Library.Options.textcolor;
-                            Position = UDim2.new(0, -10, 0, 0);
-                            Size     = UDim2.new(0, 1, 1, 0);
+                            Position = UDim2.new(0, -30, 0, 0);
+                            Size     = UDim2.new(0, 28, 1, 0);
                             TextXAlignment = Enum.TextXAlignment.Right;
                             Font = Library.Options.font;
                             TextSize = Library.Options.fontsize;
+                            TextScaled = false;
                             TextStrokeTransparency = Library.Options.textstroke;
                             TextStrokeColor3 = Library.Options.strokecolor;
                         });
