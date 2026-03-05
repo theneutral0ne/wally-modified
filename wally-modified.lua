@@ -19,7 +19,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.20",
+    Build = "2026-03-05.21",
     BindDebug = false
 };
 local Defaults; do
@@ -129,7 +129,7 @@ local Defaults; do
                     BackgroundTransparency = 1;
                     Text = "-";
                     TextSize = Options.titlesize;
-                    Font = Options.titlefont;--Enum.Font.Code;
+                    Font = Options.titlefont;
                     Name = 'window_toggle';
                     TextColor3 = Options.titletextcolor;
                     TextStrokeTransparency = Library.Options.titlestroke;
@@ -446,7 +446,7 @@ local Defaults; do
             }
         end
         
-        function Types:Box(Name, Options, Callback) --type, Default, Data, Location, Flag)
+        function Types:Box(Name, Options, Callback)
             Options = Options or {};
             local ValueType = Options.type or "";
             local Default = Options.default or "";
@@ -1088,6 +1088,10 @@ local Defaults; do
             });
 
             local PopupParent = (Library.Container and Library.Container.Parent) or ResolveGuiParent();
+            local PopupScreenGui = PopupParent;
+            if not PopupScreenGui:IsA("ScreenGui") then
+                PopupScreenGui = PopupParent:FindFirstAncestorOfClass("ScreenGui");
+            end
             local PopupData = Library:Create('Frame', {
                 Name = 'ColorPickerPopup';
                 Visible = false;
@@ -1272,12 +1276,15 @@ local Defaults; do
                 });
             });
 
-            local ModalBlocker = Library:Create('Frame', {
+            local ModalBlocker = Library:Create('TextButton', {
                 Name = 'ColorPickerModalBlocker';
                 Visible = false;
+                Text = "";
+                AutoButtonColor = false;
                 BackgroundTransparency = 1;
                 BorderSizePixel = 0;
                 Active = true;
+                Selectable = false;
                 Size = UDim2.new(1, 0, 1, 0);
                 Position = UDim2.new(0, 0, 0, 0);
                 ZIndex = 39;
@@ -1379,18 +1386,25 @@ local Defaults; do
                 return Radius * WheelRadiusScale;
             end
 
-            local function GetPointerPosition(InputObject)
-                if InputObject then
-                    local InputType = InputObject.UserInputType;
-                    if InputType == Enum.UserInputType.Touch or InputType == Enum.UserInputType.MouseMovement then
-                        if typeof(InputObject.Position) == "Vector3" then
-                            return Vector2.new(InputObject.Position.X, InputObject.Position.Y);
-                        end
-                    elseif InputType == Enum.UserInputType.MouseButton1 or InputType == Enum.UserInputType.MouseButton2 or InputType == Enum.UserInputType.MouseButton3 then
-                        return UserInputService:GetMouseLocation();
+            local function ConvertToGuiSpace(Point)
+                local Result = Point;
+                if PopupScreenGui and (not PopupScreenGui.IgnoreGuiInset) then
+                    local TopLeftInset = select(1, GuiService:GetGuiInset());
+                    if typeof(TopLeftInset) == "Vector2" then
+                        Result = Result - TopLeftInset;
                     end
                 end
-                return UserInputService:GetMouseLocation();
+                return Result;
+            end
+
+            local function GetPointerPosition(InputObject)
+                local RawPoint;
+                if InputObject and typeof(InputObject.Position) == "Vector3" then
+                    RawPoint = Vector2.new(InputObject.Position.X, InputObject.Position.Y);
+                else
+                    RawPoint = UserInputService:GetMouseLocation();
+                end
+                return ConvertToGuiSpace(RawPoint);
             end
 
             local function HueToWheelAngle(HueValue)
@@ -1478,43 +1492,6 @@ local Defaults; do
                 local Position = GuiObject.AbsolutePosition;
                 local Size = GuiObject.AbsoluteSize;
                 return Point.X >= Position.X and Point.X <= (Position.X + Size.X) and Point.Y >= Position.Y and Point.Y <= (Position.Y + Size.Y);
-            end
-
-            local function GetPointerCandidates(InputObject)
-                local Candidates = {};
-                local function AddCandidate(Point)
-                    if typeof(Point) == "Vector2" then
-                        Candidates[#Candidates + 1] = Point;
-                    end
-                end
-
-                local MousePos = UserInputService:GetMouseLocation();
-                AddCandidate(MousePos);
-
-                local TopLeftInset = select(1, GuiService:GetGuiInset());
-                if typeof(TopLeftInset) == "Vector2" then
-                    AddCandidate(MousePos - TopLeftInset);
-                end
-
-                if InputObject and typeof(InputObject.Position) == "Vector3" then
-                    local InputPos = Vector2.new(InputObject.Position.X, InputObject.Position.Y);
-                    AddCandidate(InputPos);
-                    if typeof(TopLeftInset) == "Vector2" then
-                        AddCandidate(InputPos - TopLeftInset);
-                    end
-                end
-
-                return Candidates;
-            end
-
-            local function IsPointerInsidePopup(InputObject)
-                local Candidates = GetPointerCandidates(InputObject);
-                for _, Point in next, Candidates do
-                    if IsPointInsideGui(PopupData, Point) or IsPointInsideGui(Preview, Point) then
-                        return true;
-                    end
-                end
-                return false;
             end
 
             local function PositionPopup()
@@ -1756,11 +1733,9 @@ local Defaults; do
                 BeginWheelDrag(Input);
             end);
 
-            ModalBlocker.InputBegan:Connect(function(Input)
-                if PopupOpen and IsPointerInput(Input) then
-                    if not IsPointerInsidePopup(Input) then
-                        SetPopupVisible(false, false);
-                    end
+            ModalBlocker.Activated:Connect(function()
+                if PopupOpen then
+                    SetPopupVisible(false, false);
                 end
             end);
 
@@ -1809,17 +1784,6 @@ local Defaults; do
                         ActiveAlphaInput = nil;
                     end
                     StopDragTrackingIfIdle();
-                end
-            end);
-
-            UserInputService.InputBegan:Connect(function(Input)
-                if (not PopupOpen) then
-                    return;
-                end
-                if IsPointerInput(Input) then
-                    if not IsPointerInsidePopup(Input) then
-                        SetPopupVisible(false, false);
-                    end
                 end
             end);
 
@@ -1892,7 +1856,7 @@ local Defaults; do
             local Min = Options.min or 0;
             local Max = Options.max or 1;
             local Location = Options.location or self.flags;
-            local Precise  = Options.precise  or false -- e.g 0, 1 vs 0, 0.1, 0.2, ...
+            local Precise  = Options.precise  or false
             local Decimals = math.clamp(math.floor(tonumber(Options.decimals) or 2), 0, 6);
             local Flag     = self:ResolveFlag(Options.flag, Name, "Slider");
             local Callback = Callback or function() end
@@ -1935,7 +1899,6 @@ local Defaults; do
                         Size = UDim2.new(0, 60, 0, 20);
                         Position = UDim2.new(1, -65, 0, 3);
                         BackgroundTransparency = 1;
-                        --BorderColor3 = Library.Options.bordercolor;
                         BorderSizePixel = 0;
                         Library:Create('TextLabel', {
                             Name = 'ValueLabel';
@@ -3456,10 +3419,6 @@ local Defaults; do
     end
 
     function Library:CreatePresetManager(ScriptKeyOrOptions, MaybeOptions)
-        -- Supported usage:
-        -- Library:CreatePresetManager("MyScriptKey", {location = Flags})
-        -- Library:CreatePresetManager({scriptKey = "MyScriptKey", location = Flags})
-        -- Library:CreatePresetManager("MyScriptKey") -- script-wide (all registered flags)
         local Options = {};
         if type(ScriptKeyOrOptions) == "string" then
             if type(MaybeOptions) == "table" then
