@@ -18,7 +18,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.25",
+    Build = "2026-03-05.26",
     BindDebug = false
 };
 local Defaults; do
@@ -1271,12 +1271,15 @@ local Defaults; do
                 });
             });
 
-            local ModalBlocker = Library:Create('Frame', {
+            local ModalBlocker = Library:Create('TextButton', {
                 Name = 'ColorPickerModalBlocker';
                 Visible = false;
+                Text = "";
+                AutoButtonColor = false;
                 BackgroundTransparency = 1;
                 BorderSizePixel = 0;
                 Active = true;
+                Selectable = false;
                 Size = UDim2.new(1, 0, 1, 0);
                 Position = UDim2.new(0, 0, 0, 0);
                 ZIndex = 39;
@@ -1730,15 +1733,8 @@ local Defaults; do
                 end
             end);
 
-            UserInputService.InputBegan:Connect(function(Input, Gpe)
-                if Gpe or (not PopupOpen) or (not IsPointerInput(Input)) then
-                    return;
-                end
-
-                local PointerPos = GetPointerPosition(Input);
-                if (not IsPointInsideGui(PopupData, PointerPos)) and (not IsPointInsideGui(Preview, PointerPos)) then
-                    SetPopupVisible(false, false);
-                end
+            ModalBlocker.MouseButton1Click:Connect(function()
+                -- Intentionally empty: this consumes outside clicks so controls behind the popup cannot be clicked.
             end);
 
             HexInput.FocusLost:Connect(function()
