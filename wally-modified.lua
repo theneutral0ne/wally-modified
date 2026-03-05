@@ -18,7 +18,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.18",
+    Build = "2026-03-05.19",
     BindDebug = false
 };
 local Defaults; do
@@ -1047,7 +1047,8 @@ local Defaults; do
 
             local PickerSize = math.clamp(tonumber(Options.size) or 90, 70, 130);
             local WheelImage = Options.wheelImage or "rbxassetid://6020299385";
-            local WheelOutsidePadding = math.max(0, tonumber(Options.wheelOutsidePadding) or 8);
+            local WheelRadiusScale = math.clamp(tonumber(Options.wheelRadiusScale) or 0.97, 0.6, 1);
+            local WheelOutsidePadding = math.max(0, tonumber(Options.wheelOutsidePadding) or 2);
             local WheelTop = 6;
             local ShadeTop = WheelTop + PickerSize + 6;
             local AlphaTop = ShadeTop + 20;
@@ -1094,6 +1095,7 @@ local Defaults; do
                 BackgroundColor3 = Library.Options.bgcolor;
                 BorderColor3 = Library.Options.bordercolor;
                 ClipsDescendants = true;
+                Active = true;
                 Parent = PopupParent;
                 Library:Create('Frame', {
                     Name = 'WheelContainer';
@@ -1101,12 +1103,14 @@ local Defaults; do
                     Size = UDim2.new(0, PickerSize, 0, PickerSize);
                     BackgroundColor3 = Library.Options.bgcolor;
                     BorderColor3 = Library.Options.bordercolor;
+                    Active = true;
                     Library:Create('ImageLabel', {
                         Name = 'Wheel';
                         BackgroundTransparency = 1;
                         Size = UDim2.new(1, 0, 1, 0);
                         Image = WheelImage;
                         ScaleType = Enum.ScaleType.Stretch;
+                        Active = true;
                         Library:Create('Frame', {
                             Name = 'Selector';
                             AnchorPoint = Vector2.new(0.5, 0.5);
@@ -1142,6 +1146,7 @@ local Defaults; do
                     BackgroundColor3 = Library.Options.bgcolor;
                     BorderColor3 = Library.Options.bordercolor;
                     ClipsDescendants = true;
+                    Active = true;
                     Library:Create('Frame', {
                         Name = 'ShadeTint';
                         Position = UDim2.new(0, 0, 0, 0);
@@ -1171,6 +1176,7 @@ local Defaults; do
                     BackgroundColor3 = Library.Options.bgcolor;
                     BorderColor3 = Library.Options.bordercolor;
                     ClipsDescendants = true;
+                    Active = true;
                     Library:Create('Frame', {
                         Name = 'AlphaTint';
                         Position = UDim2.new(0, 0, 0, 0);
@@ -1265,6 +1271,18 @@ local Defaults; do
                 });
             });
 
+            local ModalBlocker = Library:Create('Frame', {
+                Name = 'ColorPickerModalBlocker';
+                Visible = false;
+                BackgroundTransparency = 1;
+                BorderSizePixel = 0;
+                Active = true;
+                Size = UDim2.new(1, 0, 1, 0);
+                Position = UDim2.new(0, 0, 0, 0);
+                ZIndex = 39;
+                Parent = PopupParent;
+            });
+
             local function SetGuiZIndex(Root, Z)
                 if Root:IsA("GuiObject") then
                     Root.ZIndex = Z;
@@ -1275,7 +1293,7 @@ local Defaults; do
                     end
                 end
             end
-            SetGuiZIndex(PopupData, 40);
+            SetGuiZIndex(PopupData, 41);
 
             local Title = CheckData:FindFirstChild("Title");
             local Preview = Title and Title:FindFirstChild("Preview");
@@ -1295,6 +1313,10 @@ local Defaults; do
             local ShadeDragging = false;
             local AlphaDragging = false;
             local PopupOpen = false;
+            local ActiveWheelInput;
+            local ActiveShadeInput;
+            local ActiveAlphaInput;
+            local DragRenderConnection;
 
             local Hue, Saturation, Value = Default:ToHSV();
             local CurrentColor = Default;
@@ -1353,7 +1375,14 @@ local Defaults; do
                 if Radius <= 0 then
                     Radius = PickerSize * 0.5;
                 end
-                return Radius;
+                return Radius * WheelRadiusScale;
+            end
+
+            local function GetPointerPosition(InputObject)
+                if InputObject and typeof(InputObject.Position) == "Vector3" then
+                    return Vector2.new(InputObject.Position.X, InputObject.Position.Y);
+                end
+                return UserInputService:GetMouseLocation();
             end
 
             local function HueToWheelAngle(HueValue)
@@ -1362,13 +1391,6 @@ local Defaults; do
 
             local function WheelAngleToHue(AngleValue)
                 return (0.5 - (AngleValue / (2 * math.pi))) % 1;
-            end
-
-            local function IsPointerInsideWheel(Point, RadiusPadding)
-                local Pointer = Point or UserInputService:GetMouseLocation();
-                local Radius = GetRadius() + (tonumber(RadiusPadding) or 0);
-                local Center = Wheel.AbsolutePosition + (Wheel.AbsoluteSize * 0.5);
-                return ((Pointer - Center).Magnitude <= Radius);
             end
 
             local function UpdateInputs()
@@ -1487,6 +1509,7 @@ local Defaults; do
                     PopupOpen = true;
                     PositionPopup();
                     PopupData.Visible = true;
+                    ModalBlocker.Visible = true;
 
                     if Instant then
                         PopupData.Size = UDim2.new(0, PopupWidth, 0, PopupHeight);
@@ -1504,6 +1527,13 @@ local Defaults; do
                 WheelDragging = false;
                 ShadeDragging = false;
                 AlphaDragging = false;
+                ActiveWheelInput = nil;
+                ActiveShadeInput = nil;
+                ActiveAlphaInput = nil;
+                if DragRenderConnection then
+                    DragRenderConnection:Disconnect();
+                    DragRenderConnection = nil;
+                end
 
                 if Library.ActiveColorPopup == PopupData then
                     Library.ActiveColorPopup = nil;
@@ -1517,18 +1547,20 @@ local Defaults; do
                 if Instant then
                     PopupData.Visible = false;
                     PopupData.Size = UDim2.new(0, PopupWidth, 0, 0);
+                    ModalBlocker.Visible = false;
                 else
                     PopupData:TweenSize(UDim2.new(0, PopupWidth, 0, 0), "In", "Quint", .13, true);
                     task.delay(0.14, function()
                         if (not PopupOpen) and PopupData and PopupData.Parent then
                             PopupData.Visible = false;
+                            ModalBlocker.Visible = false;
                         end
                     end);
                 end
             end
 
-            local function UpdateFromWheelMouse()
-                local MousePos = UserInputService:GetMouseLocation();
+            local function UpdateFromWheelPointer(PointerPos)
+                local MousePos = PointerPos or GetPointerPosition(ActiveWheelInput);
                 local Center = Wheel.AbsolutePosition + (Wheel.AbsoluteSize * 0.5);
                 local Offset = MousePos - Center;
                 local Radius = GetRadius();
@@ -1544,19 +1576,19 @@ local Defaults; do
 
                 local NewSaturation = (Radius > 0 and (Magnitude / Radius) or 0);
                 local NewHue = WheelAngleToHue(math.atan2(Offset.Y, Offset.X));
-                ApplyState(NewHue, NewSaturation, Value, CurrentTransparency, true);
+                ApplyState(NewHue, NewSaturation, 1, CurrentTransparency, true);
             end
 
-            local function UpdateFromShadeMouse()
-                local MousePos = UserInputService:GetMouseLocation();
+            local function UpdateFromShadePointer(PointerPos)
+                local MousePos = PointerPos or GetPointerPosition(ActiveShadeInput);
                 local ShadeWidth = math.max(ShadeBar.AbsoluteSize.X, 1);
                 local Percent = (MousePos.X - ShadeBar.AbsolutePosition.X) / ShadeWidth;
                 Percent = math.clamp(Percent, 0, 1);
                 ApplyState(Hue, Saturation, 1 - Percent, CurrentTransparency, true);
             end
 
-            local function UpdateFromAlphaMouse()
-                local MousePos = UserInputService:GetMouseLocation();
+            local function UpdateFromAlphaPointer(PointerPos)
+                local MousePos = PointerPos or GetPointerPosition(ActiveAlphaInput);
                 local AlphaWidth = math.max(AlphaBar.AbsoluteSize.X, 1);
                 local Percent = (MousePos.X - AlphaBar.AbsolutePosition.X) / AlphaWidth;
                 Percent = math.clamp(Percent, 0, 1);
@@ -1567,31 +1599,130 @@ local Defaults; do
                 return InputObject.UserInputType == Enum.UserInputType.MouseButton1 or InputObject.UserInputType == Enum.UserInputType.Touch;
             end
 
+            local function StartDragTracking()
+                if DragRenderConnection then
+                    return;
+                end
+
+                DragRenderConnection = RunService.RenderStepped:Connect(function()
+                    if (not PopupOpen) then
+                        return;
+                    end
+
+                    local PointerPos = GetPointerPosition();
+                    if WheelDragging then
+                        UpdateFromWheelPointer(PointerPos);
+                    end
+                    if ShadeDragging then
+                        UpdateFromShadePointer(PointerPos);
+                    end
+                    if AlphaDragging then
+                        UpdateFromAlphaPointer(PointerPos);
+                    end
+                end);
+            end
+
+            local function StopDragTrackingIfIdle()
+                if WheelDragging or ShadeDragging or AlphaDragging then
+                    return;
+                end
+                if DragRenderConnection then
+                    DragRenderConnection:Disconnect();
+                    DragRenderConnection = nil;
+                end
+            end
+
+            local function BeginWheelDrag(Input)
+                if (not PopupOpen) or (not IsPointerInput(Input)) then
+                    return;
+                end
+
+                local PointerPos = GetPointerPosition(Input);
+                if not IsPointInsideGui(WheelContainer, PointerPos) then
+                    return;
+                end
+
+                local Center = Wheel.AbsolutePosition + (Wheel.AbsoluteSize * 0.5);
+                local Radius = GetRadius();
+                if (PointerPos - Center).Magnitude > (Radius + WheelOutsidePadding) then
+                    return;
+                end
+
+                WheelDragging = true;
+                ShadeDragging = false;
+                AlphaDragging = false;
+                ActiveWheelInput = Input;
+                ActiveShadeInput = nil;
+                ActiveAlphaInput = nil;
+                UpdateFromWheelPointer(PointerPos);
+                StartDragTracking();
+            end
+
+            local function BeginShadeDrag(Input)
+                if (not PopupOpen) or (not IsPointerInput(Input)) then
+                    return;
+                end
+
+                local PointerPos = GetPointerPosition(Input);
+                if not IsPointInsideGui(ShadeBar, PointerPos) then
+                    return;
+                end
+
+                WheelDragging = false;
+                ShadeDragging = true;
+                AlphaDragging = false;
+                ActiveWheelInput = nil;
+                ActiveShadeInput = Input;
+                ActiveAlphaInput = nil;
+                UpdateFromShadePointer(PointerPos);
+                StartDragTracking();
+            end
+
+            local function BeginAlphaDrag(Input)
+                if (not PopupOpen) or (not IsPointerInput(Input)) then
+                    return;
+                end
+
+                local PointerPos = GetPointerPosition(Input);
+                if not IsPointInsideGui(AlphaBar, PointerPos) then
+                    return;
+                end
+
+                WheelDragging = false;
+                ShadeDragging = false;
+                AlphaDragging = true;
+                ActiveWheelInput = nil;
+                ActiveShadeInput = nil;
+                ActiveAlphaInput = Input;
+                UpdateFromAlphaPointer(PointerPos);
+                StartDragTracking();
+            end
+
             if Preview then
                 Preview.MouseButton1Click:Connect(function()
                     SetPopupVisible(not PopupOpen, false);
                 end);
             end
 
+            WheelContainer.InputBegan:Connect(function(Input)
+                BeginWheelDrag(Input);
+            end);
             Wheel.InputBegan:Connect(function(Input)
+                BeginWheelDrag(Input);
+            end);
+
+            ModalBlocker.InputBegan:Connect(function(Input)
                 if PopupOpen and IsPointerInput(Input) then
-                    WheelDragging = true;
-                    UpdateFromWheelMouse();
+                    SetPopupVisible(false, false);
                 end
             end);
 
             ShadeBar.InputBegan:Connect(function(Input)
-                if PopupOpen and IsPointerInput(Input) then
-                    ShadeDragging = true;
-                    UpdateFromShadeMouse();
-                end
+                BeginShadeDrag(Input);
             end);
 
             AlphaBar.InputBegan:Connect(function(Input)
-                if PopupOpen and IsPointerInput(Input) then
-                    AlphaDragging = true;
-                    UpdateFromAlphaMouse();
-                end
+                BeginAlphaDrag(Input);
             end);
 
             UserInputService.InputChanged:Connect(function(Input)
@@ -1599,33 +1730,47 @@ local Defaults; do
                     return;
                 end
 
-                if Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch then
-                    if WheelDragging then
-                        UpdateFromWheelMouse();
-                    end
-                    if ShadeDragging then
-                        UpdateFromShadeMouse();
-                    end
-                    if AlphaDragging then
-                        UpdateFromAlphaMouse();
-                    end
+                local PointerMove = (Input.UserInputType == Enum.UserInputType.MouseMovement) or (Input.UserInputType == Enum.UserInputType.Touch);
+                if not PointerMove then
+                    return;
+                end
+
+                local PointerPos = GetPointerPosition(Input);
+                if WheelDragging and (Input == ActiveWheelInput or (ActiveWheelInput and ActiveWheelInput.UserInputType == Enum.UserInputType.MouseButton1 and Input.UserInputType == Enum.UserInputType.MouseMovement)) then
+                    UpdateFromWheelPointer(PointerPos);
+                end
+                if ShadeDragging and (Input == ActiveShadeInput or (ActiveShadeInput and ActiveShadeInput.UserInputType == Enum.UserInputType.MouseButton1 and Input.UserInputType == Enum.UserInputType.MouseMovement)) then
+                    UpdateFromShadePointer(PointerPos);
+                end
+                if AlphaDragging and (Input == ActiveAlphaInput or (ActiveAlphaInput and ActiveAlphaInput.UserInputType == Enum.UserInputType.MouseButton1 and Input.UserInputType == Enum.UserInputType.MouseMovement)) then
+                    UpdateFromAlphaPointer(PointerPos);
                 end
             end);
 
             UserInputService.InputEnded:Connect(function(Input)
                 if IsPointerInput(Input) then
-                    WheelDragging = false;
-                    ShadeDragging = false;
-                    AlphaDragging = false;
+                    if Input == ActiveWheelInput or (Input.UserInputType == Enum.UserInputType.MouseButton1 and ActiveWheelInput and ActiveWheelInput.UserInputType == Enum.UserInputType.MouseButton1) then
+                        WheelDragging = false;
+                        ActiveWheelInput = nil;
+                    end
+                    if Input == ActiveShadeInput or (Input.UserInputType == Enum.UserInputType.MouseButton1 and ActiveShadeInput and ActiveShadeInput.UserInputType == Enum.UserInputType.MouseButton1) then
+                        ShadeDragging = false;
+                        ActiveShadeInput = nil;
+                    end
+                    if Input == ActiveAlphaInput or (Input.UserInputType == Enum.UserInputType.MouseButton1 and ActiveAlphaInput and ActiveAlphaInput.UserInputType == Enum.UserInputType.MouseButton1) then
+                        AlphaDragging = false;
+                        ActiveAlphaInput = nil;
+                    end
+                    StopDragTrackingIfIdle();
                 end
             end);
 
-            UserInputService.InputBegan:Connect(function(Input, Gpe)
-                if Gpe or (not PopupOpen) then
+            UserInputService.InputBegan:Connect(function(Input)
+                if (not PopupOpen) then
                     return;
                 end
-                if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
-                    local MousePos = UserInputService:GetMouseLocation();
+                if IsPointerInput(Input) then
+                    local MousePos = GetPointerPosition(Input);
                     if (not IsPointInsideGui(PopupData, MousePos)) and (not IsPointInsideGui(Preview, MousePos)) then
                         SetPopupVisible(false, false);
                     end
