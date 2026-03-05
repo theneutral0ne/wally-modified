@@ -19,7 +19,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.41",
+    Build = "2026-03-05.42",
     BindDebug = false
 };
 local Defaults; do
@@ -1050,7 +1050,12 @@ local Defaults; do
             local WheelImage = Options.wheelImage or "rbxassetid://6020299385";
             local WheelRadiusScale = math.clamp(tonumber(Options.wheelRadiusScale) or 1, 0.6, 1);
             local WheelOutsidePadding = math.max(0, tonumber(Options.wheelOutsidePadding) or 4);
-            local EnableDrag = Options.drag == true or Options.draggable == true;
+            local EnableDrag = true;
+            if Options.drag ~= nil then
+                EnableDrag = Options.drag == true;
+            elseif Options.draggable ~= nil then
+                EnableDrag = Options.draggable == true;
+            end
             local WheelTop = 6;
             local ShadeTop = WheelTop + PickerSize + 6;
             local AlphaTop = ShadeTop + 20;
