@@ -4,6 +4,7 @@ local Debris = game:GetService("Debris");
 local CoreGui = game:GetService("CoreGui");
 local HttpService = game:GetService("HttpService");
 local TextService = game:GetService("TextService");
+local GuiService = game:GetService("GuiService");
 
 local Library = {
     Count = 0,
@@ -18,7 +19,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.24",
+    Build = "2026-03-05.30",
     BindDebug = false
 };
 local Defaults; do
@@ -1295,6 +1296,23 @@ local Defaults; do
             end
             SetGuiZIndex(PopupData, 41);
 
+            local PopupCloseButton = Library:Create('TextButton', {
+                Name = 'Close';
+                Text = "x";
+                AutoButtonColor = false;
+                Size = UDim2.new(0, 14, 0, 14);
+                Position = UDim2.new(1, -16, 0, 2);
+                BackgroundColor3 = Library.Options.boxcolor;
+                BorderColor3 = Library.Options.bordercolor;
+                TextColor3 = Library.Options.textcolor;
+                Font = Library.Options.font;
+                TextSize = Library.Options.fontsize;
+                TextStrokeTransparency = Library.Options.textstroke;
+                TextStrokeColor3 = Library.Options.strokecolor;
+                ZIndex = 42;
+                Parent = PopupData;
+            });
+
             local Title = CheckData:FindFirstChild("Title");
             local Preview = Title and Title:FindFirstChild("Preview");
             local WheelContainer = PopupData:FindFirstChild("WheelContainer");
@@ -1377,11 +1395,56 @@ local Defaults; do
                 return Radius * WheelRadiusScale;
             end
 
-            local function GetPointerPosition(InputObject)
-                if InputObject and typeof(InputObject.Position) == "Vector3" then
-                    return Vector2.new(InputObject.Position.X, InputObject.Position.Y);
+            local function GetPointerCandidates(InputObject)
+                local Candidates = {};
+                local function AddCandidate(Point)
+                    if typeof(Point) == "Vector2" then
+                        Candidates[#Candidates + 1] = Point;
+                    end
                 end
-                return UserInputService:GetMouseLocation();
+
+                local MousePos = UserInputService:GetMouseLocation();
+                AddCandidate(MousePos);
+
+                if InputObject and typeof(InputObject.Position) == "Vector3" then
+                    AddCandidate(Vector2.new(InputObject.Position.X, InputObject.Position.Y));
+                end
+
+                local TopLeftInset = select(1, GuiService:GetGuiInset());
+                if typeof(TopLeftInset) == "Vector2" then
+                    AddCandidate(MousePos - TopLeftInset);
+                    if InputObject and typeof(InputObject.Position) == "Vector3" then
+                        local InputPos = Vector2.new(InputObject.Position.X, InputObject.Position.Y);
+                        AddCandidate(InputPos - TopLeftInset);
+                    end
+                end
+
+                return Candidates;
+            end
+
+            local function GetPointerPosition(InputObject, PreferredGui)
+                local Candidates = GetPointerCandidates(InputObject);
+                if #Candidates == 0 then
+                    return UserInputService:GetMouseLocation();
+                end
+
+                if (not PreferredGui) or (not PreferredGui.Parent) then
+                    return Candidates[1];
+                end
+
+                local Center = PreferredGui.AbsolutePosition + (PreferredGui.AbsoluteSize * 0.5);
+                local BestPoint = Candidates[1];
+                local BestDistance = (BestPoint - Center).Magnitude;
+                for Index = 2, #Candidates do
+                    local Candidate = Candidates[Index];
+                    local Distance = (Candidate - Center).Magnitude;
+                    if Distance < BestDistance then
+                        BestDistance = Distance;
+                        BestPoint = Candidate;
+                    end
+                end
+
+                return BestPoint;
             end
 
             local function HueToWheelAngle(HueValue)
@@ -1555,7 +1618,7 @@ local Defaults; do
             end
 
             local function UpdateFromWheelPointer(PointerPos)
-                local MousePos = PointerPos or GetPointerPosition(ActiveWheelInput);
+                local MousePos = PointerPos or GetPointerPosition(ActiveWheelInput, WheelContainer);
                 local Center = Wheel.AbsolutePosition + (Wheel.AbsoluteSize * 0.5);
                 local Offset = MousePos - Center;
                 local Radius = GetRadius();
@@ -1575,7 +1638,7 @@ local Defaults; do
             end
 
             local function UpdateFromShadePointer(PointerPos)
-                local MousePos = PointerPos or GetPointerPosition(ActiveShadeInput);
+                local MousePos = PointerPos or GetPointerPosition(ActiveShadeInput, ShadeBar);
                 local ShadeWidth = math.max(ShadeBar.AbsoluteSize.X, 1);
                 local Percent = (MousePos.X - ShadeBar.AbsolutePosition.X) / ShadeWidth;
                 Percent = math.clamp(Percent, 0, 1);
@@ -1583,7 +1646,7 @@ local Defaults; do
             end
 
             local function UpdateFromAlphaPointer(PointerPos)
-                local MousePos = PointerPos or GetPointerPosition(ActiveAlphaInput);
+                local MousePos = PointerPos or GetPointerPosition(ActiveAlphaInput, AlphaBar);
                 local AlphaWidth = math.max(AlphaBar.AbsoluteSize.X, 1);
                 local Percent = (MousePos.X - AlphaBar.AbsolutePosition.X) / AlphaWidth;
                 Percent = math.clamp(Percent, 0, 1);
@@ -1599,7 +1662,7 @@ local Defaults; do
                     return;
                 end
 
-                local PointerPos = GetPointerPosition(Input);
+                local PointerPos = GetPointerPosition(Input, WheelContainer);
                 if not IsPointInsideGui(WheelContainer, PointerPos) then
                     return;
                 end
@@ -1624,7 +1687,7 @@ local Defaults; do
                     return;
                 end
 
-                local PointerPos = GetPointerPosition(Input);
+                local PointerPos = GetPointerPosition(Input, ShadeBar);
                 if not IsPointInsideGui(ShadeBar, PointerPos) then
                     return;
                 end
@@ -1643,7 +1706,7 @@ local Defaults; do
                     return;
                 end
 
-                local PointerPos = GetPointerPosition(Input);
+                local PointerPos = GetPointerPosition(Input, AlphaBar);
                 if not IsPointInsideGui(AlphaBar, PointerPos) then
                     return;
                 end
@@ -1662,6 +1725,9 @@ local Defaults; do
                     SetPopupVisible(not PopupOpen, false);
                 end);
             end
+            PopupCloseButton.MouseButton1Click:Connect(function()
+                SetPopupVisible(false, false);
+            end);
 
             WheelContainer.InputBegan:Connect(function(Input)
                 BeginWheelDrag(Input);
@@ -1672,7 +1738,7 @@ local Defaults; do
 
             ModalBlocker.InputBegan:Connect(function(Input)
                 if PopupOpen and IsPointerInput(Input) then
-                    SetPopupVisible(false, false);
+                    -- Intentionally empty: blocker consumes outside clicks so controls behind popup cannot be clicked.
                 end
             end);
 
@@ -1694,15 +1760,14 @@ local Defaults; do
                     return;
                 end
 
-                local PointerPos = GetPointerPosition(Input);
                 if WheelDragging and (Input == ActiveWheelInput or (ActiveWheelInput and ActiveWheelInput.UserInputType == Enum.UserInputType.MouseButton1 and Input.UserInputType == Enum.UserInputType.MouseMovement)) then
-                    UpdateFromWheelPointer(PointerPos);
+                    UpdateFromWheelPointer(GetPointerPosition(Input, WheelContainer));
                 end
                 if ShadeDragging and (Input == ActiveShadeInput or (ActiveShadeInput and ActiveShadeInput.UserInputType == Enum.UserInputType.MouseButton1 and Input.UserInputType == Enum.UserInputType.MouseMovement)) then
-                    UpdateFromShadePointer(PointerPos);
+                    UpdateFromShadePointer(GetPointerPosition(Input, ShadeBar));
                 end
                 if AlphaDragging and (Input == ActiveAlphaInput or (ActiveAlphaInput and ActiveAlphaInput.UserInputType == Enum.UserInputType.MouseButton1 and Input.UserInputType == Enum.UserInputType.MouseMovement)) then
-                    UpdateFromAlphaPointer(PointerPos);
+                    UpdateFromAlphaPointer(GetPointerPosition(Input, AlphaBar));
                 end
             end);
 
