@@ -53,6 +53,9 @@ local WindowOptions = {
     autoscaletext = true,
     mintextsize = 10,
     itemspacing = 2, -- spacing (pixels) between methods in each window
+    togglestyle = "checkmark", -- "checkmark" or "fill"
+    toggleoncolor = Color3.fromRGB(0, 255, 140),
+    toggleoffcolor = Color3.fromRGB(35, 35, 35),
 }
 
 local MainWindow = Library:CreateWindow("Wally Practical - Main", WindowOptions)
