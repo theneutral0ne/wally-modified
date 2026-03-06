@@ -577,6 +577,7 @@ local AdvancedWindow = Library:CreateWindow("Wally Practical - Advanced", Window
 local GeneralTab = AdvancedWindow:CreateTab("General")
 local AdvancedTab = AdvancedWindow:CreateTab("Advanced")
 local AdvancedSubTab = AdvancedTab:CreateSubTab("Sub Options")
+local WalkSpeedBeforeHold = nil
 
 GeneralTab:SearchBar("Filter Controls", {
     tooltip = "Type to filter controls in the active tab.",
@@ -655,9 +656,11 @@ local HoldBind = AdvancedTab:Bind("Sprint Hold Bind", {
     tooltip = "Hold mode: callback receives true on press, false on release.",
 }, function(State)
     if State == true then
+        WalkSpeedBeforeHold = tonumber(Flags.WalkSpeed) or 16
         WalkSpeedSlider:Set(80)
     else
-        WalkSpeedSlider:Set(tonumber(Flags.WalkSpeed) or 16)
+        WalkSpeedSlider:Set(tonumber(WalkSpeedBeforeHold) or 16)
+        WalkSpeedBeforeHold = nil
     end
     ApplyMovement()
 end)
