@@ -13,7 +13,7 @@ Wally Modified is a Roblox UI library focused on practical script UIs with:
 - Toast notifications
 - Built-in settings window generator
 
-Current build in this repo: `2026-03-06.51`.
+Current build in this repo: `2026-03-06.52`.
 
 ## Loadstring
 
@@ -31,6 +31,8 @@ local Flags = {}
 local Window = Library:CreateWindow("My Script", {
     underlinecolor = "rainbow",
     persistwindow = true,
+    width = 230,
+    autowidth = true,
     itemspacing = 2,
     togglestyle = "checkmark", -- or "fill"
 })
@@ -90,6 +92,11 @@ Window objects also expose:
 - `SetMinimized(IsMinimized, Animate?)`
 - `SetExpanded(IsExpanded, Animate?)`
 - `GetMinimized()`
+- `SetWidth(NewWidth)`
+- `GetWidth()`
+- `SetAutoWidth(Boolean, RefreshNow?)`
+- `GetAutoWidth()`
+- `RefreshAutoWidth(Force?)`
 
 ### 2) Flags + Location
 Most interactive controls support:
@@ -190,6 +197,11 @@ Defaults:
 | `titletextcolor` | `Color3` | `Color3.fromRGB(255,255,255)` |
 | `autoscaletext` | `boolean` | `true` |
 | `mintextsize` | `number` | `10` |
+| `width` | `number` | `190` |
+| `minwidth` | `number` | `170` |
+| `maxwidth` | `number` | `420` |
+| `autowidth` | `boolean` | `false` |
+| `autowidthpadding` | `number` | `12` |
 | `itemspacing` | `number` | `0` |
 | `methodspacing` | `number` | alias for spacing |
 | `controlspacing` | `number` | alias for spacing |
@@ -487,6 +499,50 @@ Gets control API by root GUI object.
 ### `Library:RefreshDependencies()`
 Forces dependency re-evaluation across controls.
 
+## Batch Updates and Callback Suspension
+
+### `Library:SuspendCallbacks(State?)`
+- `true` (or no arg): increments suspend depth
+- `false`: decrements suspend depth
+- Returns: `(isSuspended, depth)`
+
+### `Library:ResumeCallbacks()`
+Alias for `SuspendCallbacks(false)`.
+
+### `Library:AreCallbacksSuspended()`
+Returns `true` when callback suspension depth > 0.
+
+### `Library:BeginBatchUpdate(options?)`
+Begins a batch context.
+
+Options:
+- `suspendCallbacks` (default `true`)
+- `refreshDependencies` (default `true`)
+
+Returns a batch context used by `EndBatchUpdate`.
+
+### `Library:EndBatchUpdate(context?, options?)`
+Ends a batch context and optionally refreshes dependencies.
+
+### `Library:BatchUpdate(worker, options?)`
+Convenience wrapper that:
+1. begins batch
+2. runs `worker(Library)`
+3. ends batch safely
+
+Example:
+
+```lua
+Library:BatchUpdate(function()
+    SpeedSlider:Set(50)
+    FlyToggle:Set(true)
+    EspColor:Set(Color3.fromRGB(80, 170, 255), true)
+end, {
+    suspendCallbacks = true,
+    refreshDependencies = true,
+})
+```
+
 ## Presets
 
 ### `Library:CreatePresetManager(ScriptKeyOrOptions?, MaybeOptions?)`
@@ -633,4 +689,3 @@ It demonstrates:
 - notifications
 - settings window + script-wide presets + import/export
 - persistence
-
