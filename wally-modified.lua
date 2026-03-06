@@ -18,7 +18,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-06.54",
+    Build = "2026-03-06.55",
     BindDebug = false,
     CallbackSuspendDepth = 0,
     BatchUpdateDepth = 0,
@@ -110,29 +110,9 @@ local Defaults; do
 	                0,
 	                40
 	            );
-                local function ClampWidth(Value, MinWidth, MaxWidth)
-                    local Numeric = math.floor((tonumber(Value) or 190) + 0.5);
-                    local MinData = math.max(120, math.floor((tonumber(MinWidth) or 170) + 0.5));
-                    local MaxData = math.max(MinData, math.floor((tonumber(MaxWidth) or 420) + 0.5));
-                    return math.clamp(Numeric, MinData, MaxData), MinData, MaxData;
-                end
-                local WindowWidth, MinWindowWidth, MaxWindowWidth = ClampWidth(
-                    Options.width or Options.windowwidth,
-                    Options.minwidth,
-                    Options.maxwidth
-                );
-                local ResizeMinWindowWidth = math.max(
-                    MinWindowWidth,
-                    math.floor((tonumber(Options.resizeMinWidth or Options.resizeMinWidthPixels) or MinWindowWidth) + 0.5)
-                );
-                local ResizeMaxWindowWidth = math.max(
-                    ResizeMinWindowWidth,
-                    math.floor((tonumber(Options.resizeMaxWidth or Options.resizeMaxWidthPixels) or MaxWindowWidth) + 0.5)
-                );
-                local Resizable = (Options.resizable == true);
-                local UseResizeGrip = (Options.resizeGrip ~= false and Options.resizable == true);
-                local AutoWidthPadding = math.clamp(math.floor((tonumber(Options.autowidthpadding or Options.widthpadding) or 12) + 0.5), 0, 80);
-                local WindowStride = math.max(200, WindowWidth + 10);
+                local WindowWidth = 190;
+                local WindowStride = 200;
+                local UseResizeGrip = false;
 	            local NewWindow = Library:Create('Frame', {
                 Name = Name;
                 Size = UDim2.new(0, WindowWidth, 0, 30);
@@ -232,12 +212,12 @@ local Defaults; do
                 order = 0;
                 AutoFlagPrefix = tostring(Name or "Window") .. "_" .. tostring(Library.Count);
                 Width = WindowWidth;
-                MinWidth = ResizeMinWindowWidth;
-                MaxWidth = ResizeMaxWindowWidth;
-                Resizable = Resizable;
-                ResizeGripEnabled = UseResizeGrip;
-                AutoWidth = (Options.autowidth == true or Options.autoWidth == true or Options.autosize == true);
-                AutoWidthPadding = AutoWidthPadding;
+                MinWidth = WindowWidth;
+                MaxWidth = WindowWidth;
+                Resizable = false;
+                ResizeGripEnabled = false;
+                AutoWidth = false;
+                AutoWidthPadding = 0;
                 InternalConnections = {};
                 PopupInstances = {};
 
@@ -278,11 +258,7 @@ local Defaults; do
             end
 
             function WindowData:SetWidth(NewWidth)
-                local Width = math.floor((tonumber(NewWidth) or self.Width or WindowWidth) + 0.5);
-                Width = math.clamp(Width, self.MinWidth or MinWindowWidth, self.MaxWidth or MaxWindowWidth);
-                if self.Width == Width then
-                    return self.Width;
-                end
+                local Width = WindowWidth;
                 self.Width = Width;
                 if self.object and self.object.Parent then
                     self.object.Size = UDim2.new(0, Width, self.object.Size.Y.Scale, self.object.Size.Y.Offset);
@@ -290,60 +266,26 @@ local Defaults; do
                 if type(self.RefreshTabHostSize) == "function" then
                     self:RefreshTabHostSize();
                 end
-                if ResizeGrip and ResizeGrip.Parent then
-                    local ContentHeight = 0;
-                    if self.toggled and self.container and self.container.Parent then
-                        ContentHeight = self.container.Size.Y.Offset;
-                    end
-                    ResizeGrip.Position = UDim2.new(1, -10, 0, 20 + ContentHeight);
-                end
                 return self.Width;
             end
 
             function WindowData:GetWidth()
-                return tonumber(self.Width) or WindowWidth;
+                if self.object and self.object.Parent then
+                    return tonumber(self.object.Size.X.Offset) or WindowWidth;
+                end
+                return WindowWidth;
             end
 
             function WindowData:SetAutoWidth(State, RefreshNow)
-                self.AutoWidth = (State == true);
-                if RefreshNow ~= false then
-                    self:RefreshAutoWidth(self.AutoWidth == true);
-                end
-                return self.AutoWidth;
+                self.AutoWidth = false;
+                return false;
             end
 
             function WindowData:GetAutoWidth()
-                return self.AutoWidth == true;
+                return false;
             end
 
             function WindowData:RefreshAutoWidth(Force)
-                if (not self.object) or (not self.object.Parent) then
-                    return self:GetWidth();
-                end
-                if self.AutoWidth ~= true and Force ~= true then
-                    return self:GetWidth();
-                end
-
-                local RootX = self.object.AbsolutePosition.X;
-                local RequiredWidth = tonumber(self.MinWidth) or MinWindowWidth;
-                local ExtraPadding = tonumber(self.AutoWidthPadding) or AutoWidthPadding;
-                for _, Descendant in next, self.object:GetDescendants() do
-                    if Descendant:IsA("TextLabel") or Descendant:IsA("TextButton") or Descendant:IsA("TextBox") then
-                        if Descendant.Visible ~= false then
-                            local LocalLeft = Descendant.AbsolutePosition.X - RootX;
-                            local TextRight = LocalLeft + MeasureTextWidth(Descendant) + 10;
-                            if TextRight > RequiredWidth then
-                                RequiredWidth = TextRight;
-                            end
-                        end
-                    end
-                end
-
-                local TargetWidth = math.max(
-                    tonumber(self.Width) or WindowWidth,
-                    math.floor(RequiredWidth + ExtraPadding + 0.5)
-                );
-                self:SetWidth(TargetWidth);
                 return self:GetWidth();
             end
 
@@ -643,9 +585,6 @@ local Defaults; do
             end
 
             local ParentWindow = self.ParentWindow or self;
-            if ParentWindow and type(ParentWindow.RefreshAutoWidth) == "function" then
-                ParentWindow:RefreshAutoWidth(false);
-            end
             if ParentWindow and type(ParentWindow.UpdateResizeGripPosition) == "function" then
                 ParentWindow:UpdateResizeGripPosition();
             end
@@ -6586,14 +6525,6 @@ local Defaults; do
         autoscaletext = true;
         mintextsize = 10;
         width = 190;
-        minwidth = 170;
-        maxwidth = 420;
-        resizable = false;
-        resizeGrip = true;
-        resizeMinWidth = 170;
-        resizeMaxWidth = 420;
-        autowidth = false;
-        autowidthpadding = 12;
         itemspacing = 0;
         togglestyle = "checkmark";
         toggleoncolor = Color3.fromRGB(0, 255, 140);
@@ -6667,31 +6598,15 @@ local Defaults; do
                     0,
                     40
                 );
-                local MinWidth = math.max(120, math.floor((tonumber(WindowOptions.minwidth) or 170) + 0.5));
-                local MaxWidth = math.max(MinWidth, math.floor((tonumber(WindowOptions.maxwidth) or 420) + 0.5));
-                local ResizeMinWidth = math.max(
-                    MinWidth,
-                    math.floor((tonumber(WindowOptions.resizeMinWidth or WindowOptions.resizeMinWidthPixels) or MinWidth) + 0.5)
-                );
-                local ResizeMaxWidth = math.max(
-                    ResizeMinWidth,
-                    math.floor((tonumber(WindowOptions.resizeMaxWidth or WindowOptions.resizeMaxWidthPixels) or MaxWidth) + 0.5)
-                );
-                local Width = math.clamp(
-                    math.floor((tonumber(WindowOptions.width or WindowOptions.windowwidth) or (WindowData.GetWidth and WindowData:GetWidth()) or 190) + 0.5),
-                    ResizeMinWidth,
-                    ResizeMaxWidth
-                );
-                local AutoWidth = (WindowOptions.autowidth == true or WindowOptions.autoWidth == true or WindowOptions.autosize == true);
-                local AutoWidthPadding = math.clamp(math.floor((tonumber(WindowOptions.autowidthpadding or WindowOptions.widthpadding) or 12) + 0.5), 0, 80);
+                local Width = 190;
 
                 WindowObject.BackgroundColor3 = WindowOptions.topcolor;
-                WindowData.MinWidth = ResizeMinWidth;
-                WindowData.MaxWidth = ResizeMaxWidth;
-                WindowData.Resizable = (WindowOptions.resizable == true);
-                WindowData.ResizeGripEnabled = (WindowOptions.resizeGrip ~= false and WindowOptions.resizable == true);
-                WindowData.AutoWidth = AutoWidth;
-                WindowData.AutoWidthPadding = AutoWidthPadding;
+                WindowData.MinWidth = Width;
+                WindowData.MaxWidth = Width;
+                WindowData.Resizable = false;
+                WindowData.ResizeGripEnabled = false;
+                WindowData.AutoWidth = false;
+                WindowData.AutoWidthPadding = 0;
                 if type(WindowData.SetWidth) == "function" then
                     WindowData:SetWidth(Width);
                 else
@@ -6740,9 +6655,6 @@ local Defaults; do
 
                 if type(WindowData.Resize) == "function" then
                     WindowData:Resize();
-                end
-                if type(WindowData.RefreshAutoWidth) == "function" then
-                    WindowData:RefreshAutoWidth(false);
                 end
             end
         end
@@ -7612,15 +7524,6 @@ local Defaults; do
             return nil;
         end
 
-        ApplyWindowOverride("width", ResolveOption(Options.windowWidth, Options.width));
-        ApplyWindowOverride("minwidth", ResolveOption(Options.windowMinWidth, Options.minwidth));
-        ApplyWindowOverride("maxwidth", ResolveOption(Options.windowMaxWidth, Options.maxwidth));
-        ApplyWindowOverride("resizable", ResolveOption(Options.windowResizable, Options.resizable));
-        ApplyWindowOverride("resizeGrip", Options.resizeGrip);
-        ApplyWindowOverride("resizeMinWidth", Options.resizeMinWidth);
-        ApplyWindowOverride("resizeMaxWidth", Options.resizeMaxWidth);
-        ApplyWindowOverride("autowidth", Options.windowAutoWidth);
-        ApplyWindowOverride("autowidthpadding", Options.windowAutoWidthPadding);
         ApplyWindowOverride("itemspacing", Options.windowItemSpacing);
         ApplyWindowOverride("persistwindow", ResolveOption(Options.persistwindow, Options.persistWindow, Options.persist));
         ApplyWindowOverride("windowPersistence", Options.windowPersistence);
