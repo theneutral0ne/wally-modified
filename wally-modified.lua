@@ -18,7 +18,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-06.48",
+    Build = "2026-03-06.49",
     BindDebug = false
 };
 local Defaults; do
@@ -498,6 +498,12 @@ local Defaults; do
             local VisibilityRule = Options.dependsOn or Options.visibleWhen or Options.showWhen;
             local EnabledRule = Options.enabledWhen or Options.enableWhen;
             local TooltipText = Options.tooltip or Options.help or Options.description or Options.hint;
+            if TooltipText == nil then
+                local FallbackTooltip = tostring(SearchText or "");
+                if FallbackTooltip ~= "" then
+                    TooltipText = FallbackTooltip;
+                end
+            end
             local LastShown = nil;
             local LastEnabled = nil;
 
@@ -642,10 +648,16 @@ local Defaults; do
 
             function Api:SetTooltip(Text)
                 TooltipText = Text;
+                local Resolver = function()
+                    return TooltipText;
+                end
                 if Root and Root.Parent then
-                    Library:AttachTooltip(Root, function()
-                        return TooltipText;
-                    end);
+                    Library:AttachTooltip(Root, Resolver);
+                end
+                for _, Target in next, Targets do
+                    if Target and Target.Parent then
+                        Library:AttachTooltip(Target, Resolver);
+                    end
                 end
                 return true;
             end
@@ -782,8 +794,8 @@ local Defaults; do
                     Name = "Header";
                     Position = UDim2.new(0, 5, 0, 0);
                     Size = UDim2.new(1, -10, 0, HeaderHeight);
-                    BackgroundColor3 = Owner.options.dropcolor;
-                    BorderColor3 = Owner.options.bordercolor;
+                    BackgroundTransparency = 1;
+                    BorderSizePixel = 0;
                     Library:Create("UIListLayout", {
                         Name = "List";
                         FillDirection = Enum.FillDirection.Horizontal;
@@ -1118,7 +1130,7 @@ local Defaults; do
                     BackgroundTransparency = 1;
                     TextColor3 = InitialOptions.textcolor;
                     Position = UDim2.new(0, 5, 0, 0);
-                    Size     = UDim2.new(1, -5, 1, 0);
+                    Size     = UDim2.new(1, -35, 1, 0);
                     TextXAlignment = Enum.TextXAlignment.Left;
                     Font = InitialOptions.font;
                     TextSize = InitialOptions.fontsize;
@@ -1289,7 +1301,7 @@ local Defaults; do
                     TextStrokeTransparency = Library.Options.textstroke;
                     TextStrokeColor3 = Library.Options.strokecolor;
                     Position = UDim2.new(0, 5, 0, 0);
-                    Size     = UDim2.new(1, -5, 1, 0);
+                    Size     = UDim2.new(1, -70, 1, 0);
                     TextXAlignment = Enum.TextXAlignment.Left;
                     Font = Library.Options.font;
                     TextSize = Library.Options.fontsize;
@@ -1622,7 +1634,7 @@ local Defaults; do
                     BackgroundTransparency = 1;
                     TextColor3 = Library.Options.textcolor;
                     Position = UDim2.new(0, 5, 0, 0);
-                    Size     = UDim2.new(1, -5, 1, 0);
+                    Size     = UDim2.new(1, -70, 1, 0);
                     TextXAlignment = Enum.TextXAlignment.Left;
                     Font = Library.Options.font;
                     TextSize = Library.Options.fontsize;
@@ -2025,7 +2037,7 @@ local Defaults; do
                     BackgroundTransparency = 1;
                     TextColor3 = Library.Options.textcolor;
                     Position = UDim2.new(0, 5, 0, 0);
-                    Size = UDim2.new(1, -5, 1, 0);
+                    Size = UDim2.new(1, -35, 1, 0);
                     TextXAlignment = Enum.TextXAlignment.Left;
                     Font = Library.Options.font;
                     TextSize = Library.Options.fontsize;
@@ -3193,10 +3205,11 @@ local Defaults; do
                     Size     = UDim2.new(1, -10, 0, 20);
                     Library:Create('TextLabel', {
                         Name = 'Selection';
-                        Size = UDim2.new(1, 0, 1, 0);
+                        Size = UDim2.new(1, -24, 1, 0);
                         Text = (DefaultSelection ~= "" and tostring(DefaultSelection) or Name);
                         TextColor3 = Library.Options.textcolor;
                         BackgroundTransparency = 1;
+                        TextXAlignment = Enum.TextXAlignment.Left;
                         Font = Library.Options.font;
                         TextSize = Library.Options.fontsize;
                         TextStrokeTransparency = Library.Options.textstroke;
@@ -5519,7 +5532,15 @@ local Defaults; do
         Options.scope = "script";
         Options.scriptWide = true;
         Options.location = nil;
-        return self:CreatePresetManager(Options);
+        local Manager = self:CreatePresetManager(Options);
+        if type(Manager) == "table" then
+            self.WindowPersistenceRootFolder = Manager:GetRootFolder();
+            self.WindowPersistenceScriptKey = Manager:GetScriptKey();
+            if not self.WindowPersistenceFileName or self.WindowPersistenceFileName == "" then
+                self.WindowPersistenceFileName = "windows.json";
+            end
+        end
+        return Manager;
     end
     
     Defaults = {
@@ -5760,6 +5781,31 @@ local Defaults; do
             clearOnLoad = (PresetConfig.clearOnLoad ~= false);
             separateByPlace = (PresetConfig.separateByPlace ~= false);
         });
+        self.WindowPersistenceRootFolder = PresetManager:GetRootFolder();
+        self.WindowPersistenceScriptKey = PresetManager:GetScriptKey();
+        self.WindowPersistenceFileName = "windows.json";
+
+        for _, WindowData in next, self.Windows do
+            if WindowData and WindowData.object and WindowData.object.Parent then
+                local WindowName = tostring(WindowData.object.Name or "Window");
+                local WindowOptionsData = WindowData.options or {};
+                local PersistEnabled = (
+                    WindowOptionsData.persist == true
+                    or WindowOptionsData.persistwindow == true
+                    or (type(self.Options) == "table" and self.Options.persistwindow == true)
+                );
+                if PersistEnabled then
+                    self:AttachWindowPersistence(WindowData, WindowName, {
+                        persist = true;
+                        windowPersistence = {
+                            rootFolder = self.WindowPersistenceRootFolder;
+                            scriptFolder = self.WindowPersistenceScriptKey;
+                            fileName = self.WindowPersistenceFileName;
+                        };
+                    });
+                end
+            end
+        end
 
         local IsSyncing = false;
         local ToggleStyleDropdown;
@@ -6293,12 +6339,28 @@ local Defaults; do
             return Text;
         end
 
-        local RootFolder = tostring(PersistOptions.rootFolder or PersistOptions.folder or "WallyModifiedWindowState");
-        local ScriptFolder = tostring(PersistOptions.scriptFolder or PersistOptions.scriptKey or self:GetAutoScriptStorageKey());
+        local RootFolder = tostring(PersistOptions.rootFolder or PersistOptions.folder or self.WindowPersistenceRootFolder or "WallyModifiedPresets");
+        local ScriptFolder = tostring(PersistOptions.scriptFolder or PersistOptions.scriptKey or self.WindowPersistenceScriptKey or self:GetAutoScriptStorageKey());
         local ScriptPath = RootFolder .. "/" .. Sanitize(ScriptFolder, "Script");
-        local FilePath = ScriptPath .. "/" .. tostring(PersistOptions.fileName or "windows.json");
+        local FilePath = ScriptPath .. "/" .. tostring(PersistOptions.fileName or self.WindowPersistenceFileName or "windows.json");
         local WindowKey = tostring(PersistOptions.windowKey or WindowName or "Window");
         WindowKey = Sanitize(WindowKey, "Window");
+        local PersistenceStorageKey = tostring(FilePath) .. "::" .. tostring(WindowKey);
+
+        if WindowData._PersistenceStorageKey == PersistenceStorageKey then
+            return true, FilePath;
+        end
+
+        if type(WindowData._PersistenceConnections) == "table" then
+            for _, Connection in next, WindowData._PersistenceConnections do
+                if Connection and Connection.Disconnect then
+                    pcall(function()
+                        Connection:Disconnect();
+                    end);
+                end
+            end
+            WindowData._PersistenceConnections = nil;
+        end
 
         local function EnsureFolder()
             local OkRoot, RootExists = pcall(IsFolder, RootFolder);
@@ -6404,11 +6466,14 @@ local Defaults; do
             end);
         end
 
-        WindowData.object:GetPropertyChangedSignal("Position"):Connect(QueueSave);
-        WindowData.object:GetAttributeChangedSignal("WallyWindowToggled"):Connect(QueueSave);
+        local Connections = {};
+        Connections[#Connections + 1] = WindowData.object:GetPropertyChangedSignal("Position"):Connect(QueueSave);
+        Connections[#Connections + 1] = WindowData.object:GetAttributeChangedSignal("WallyWindowToggled"):Connect(QueueSave);
         WindowData.OnToggleChanged = function()
             QueueSave();
         end
+        WindowData._PersistenceStorageKey = PersistenceStorageKey;
+        WindowData._PersistenceConnections = Connections;
         QueueSave();
         return true, FilePath;
     end
