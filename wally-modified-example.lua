@@ -48,6 +48,7 @@ local WindowOptions = {
     togglestyle = "checkmark", -- "checkmark" or "fill"
     toggleoncolor = Color3.fromRGB(0, 255, 140),
     toggleoffcolor = Color3.fromRGB(35, 35, 35),
+    persistwindow = true,
 }
 
 local MainWindow = Library:CreateWindow("Wally Practical - Main", WindowOptions)
@@ -469,6 +470,14 @@ UtilityWindow:Button("Show Notification", function()
     StateLabel:Refresh("State: Sent test notification")
 end)
 
+UtilityWindow:Button("Show Level Notifications", function()
+    Library:NotifyInfo("Wally Modified", "Info level toast", 2)
+    Library:NotifySuccess("Wally Modified", "Success level toast", 2)
+    Library:NotifyWarn("Wally Modified", "Warn level toast", 2)
+    Library:NotifyError("Wally Modified", "Error level toast", 2)
+    StateLabel:Refresh("State: Sent level notifications")
+end)
+
 local ReapplyEspButton = UtilityWindow:Button("Reapply ESP", function()
     ApplyMovement()
     RefreshEspForAllPlayers()
@@ -562,6 +571,177 @@ UtilityWindow:Button("Box Return Demo (Set JumpPower TextBox)", function()
     ApplyMovement()
     StateLabel:Refresh("State: JumpPower set through Box return object")
 end)
+
+-- ADVANCED WINDOW (new API showcase)
+local AdvancedWindow = Library:CreateWindow("Wally Practical - Advanced", WindowOptions)
+local GeneralTab = AdvancedWindow:CreateTab("General")
+local AdvancedTab = AdvancedWindow:CreateTab("Advanced")
+local AdvancedSubTab = AdvancedTab:CreateSubTab("Sub Options")
+
+GeneralTab:SearchBar("Filter Controls", {
+    tooltip = "Type to filter controls in the active tab.",
+})
+
+local AdvancedEnabledToggle = GeneralTab:Toggle("Advanced Controls Enabled", {
+    location = Flags,
+    flag = "AdvancedControlsEnabled",
+    default = false,
+    tooltip = "Dependency root flag for advanced controls.",
+}, function(Value)
+    StateLabel:Refresh("State: Advanced controls = " .. tostring(Value))
+end)
+
+local AdvancedStrengthSlider = GeneralTab:Slider("Advanced Strength", {
+    location = Flags,
+    flag = "AdvancedStrength",
+    min = 0,
+    max = 100,
+    default = 50,
+    tooltip = "Only enabled when Advanced Controls Enabled is true.",
+    enabledWhen = {
+        flag = "AdvancedControlsEnabled",
+        value = true,
+    },
+}, function(Value)
+    StateLabel:Refresh("State: Advanced strength = " .. tostring(Value))
+end)
+
+local LargeDropdownItems = {}
+for Index = 1, 350 do
+    LargeDropdownItems[Index] = "Preset Option " .. tostring(Index)
+end
+
+local LargeDropdown = GeneralTab:Dropdown("Large Virtualized Dropdown", {
+    location = Flags,
+    flag = "LargeDropdownSelection",
+    list = LargeDropdownItems,
+    tooltip = "Large dataset dropdown to exercise virtualized rendering.",
+}, function(Value)
+    StateLabel:Refresh("State: Large dropdown -> " .. tostring(Value))
+end)
+
+local LargeMultiSelectItems = {}
+for Index = 1, 500 do
+    LargeMultiSelectItems[Index] = "Tag_" .. tostring(Index)
+end
+
+local LargeMultiSelect = GeneralTab:MultiSelectList("Large Virtualized List", {
+    location = Flags,
+    flag = "LargeMultiSelectTags",
+    list = LargeMultiSelectItems,
+    search = true,
+    sort = false,
+    maxRows = 500,
+    maxVisibleRows = 6,
+    listHeight = 120,
+    tooltip = "Large list to demonstrate virtualized multi-select rendering.",
+}, function(_, SelectedArray)
+    StateLabel:Refresh("State: Selected tags = " .. tostring(#SelectedArray))
+end)
+
+local HiddenUntilEnabledLabel = GeneralTab:Label("This label appears when advanced controls are enabled.", {
+    tooltip = "Visibility dependency example.",
+    visibleWhen = {
+        flag = "AdvancedControlsEnabled",
+        value = true,
+    },
+})
+
+local HoldBind = AdvancedTab:Bind("Sprint Hold Bind", {
+    location = Flags,
+    flag = "SprintHoldBind",
+    default = Enum.KeyCode.LeftShift,
+    mode = "hold",
+    tooltip = "Hold mode: callback receives true on press, false on release.",
+}, function(State)
+    if State == true then
+        WalkSpeedSlider:Set(80)
+    else
+        WalkSpeedSlider:Set(tonumber(Flags.WalkSpeed) or 16)
+    end
+    ApplyMovement()
+end)
+
+local ToggleBind = AdvancedSubTab:Bind("ESP Toggle Mode Bind", {
+    location = Flags,
+    flag = "EspToggleModeBind",
+    default = Enum.KeyCode.O,
+    mode = "toggle",
+    tooltip = "Toggle mode: callback receives bool on each press.",
+}, function(State)
+    BoxEspToggle:Set(State == true)
+    RefreshEspForAllPlayers()
+end)
+
+AdvancedSubTab:Button("Set Toggle Bind Mode -> Press", {
+    tooltip = "Runtime bind mode switching demo.",
+}, function()
+    ToggleBind:SetMode("press", true)
+    StateLabel:Refresh("State: ESP toggle bind mode set to press")
+end)
+
+AdvancedSubTab:Button("Hide Advanced Strength Via API", {
+    tooltip = "Uses Library:GetControlApiByFlag",
+}, function()
+    local Api = Library:GetControlApiByFlag("AdvancedStrength")
+    if Api and Api.SetVisible then
+        Api:SetVisible(false)
+        StateLabel:Refresh("State: Advanced Strength hidden via API")
+    end
+end)
+
+AdvancedSubTab:Button("Show Advanced Strength Via API", function()
+    local Api = Library:GetControlApiByFlag("AdvancedStrength")
+    if Api and Api.SetVisible then
+        Api:SetVisible(true)
+        StateLabel:Refresh("State: Advanced Strength shown via API")
+    end
+end)
+
+AdvancedSubTab:Button("Disable Advanced Strength Via API", {
+    tooltip = "Visible/enabled API demo (SetEnabled false).",
+}, function()
+    local Api = Library:GetControlApiByFlag("AdvancedStrength")
+    if Api and Api.SetEnabled then
+        Api:SetEnabled(false)
+        StateLabel:Refresh("State: Advanced Strength disabled via API")
+    end
+end)
+
+AdvancedSubTab:Button("Enable Advanced Strength Via API", function()
+    local Api = Library:GetControlApiByFlag("AdvancedStrength")
+    if Api and Api.SetEnabled then
+        Api:SetEnabled(true)
+        StateLabel:Refresh("State: Advanced Strength enabled via API")
+    end
+end)
+
+AdvancedSubTab:Button("Refresh Dependency Evaluation", {
+    tooltip = "Calls Library:RefreshDependencies().",
+}, function()
+    local Count = Library:RefreshDependencies()
+    StateLabel:Refresh("State: Dependencies refreshed (" .. tostring(Count) .. " controls)")
+end)
+
+AdvancedSubTab:Button("Set ESP Bind Mode -> Always", {
+    tooltip = "Bind mode demo (always mode).",
+}, function()
+    ToggleBind:SetMode("always", true)
+    StateLabel:Refresh("State: ESP bind mode set to always")
+end)
+
+AdvancedSubTab:Button("Set ESP Bind Mode -> Toggle", function()
+    ToggleBind:SetMode("toggle", true)
+    StateLabel:Refresh("State: ESP bind mode set to toggle")
+end)
+
+AdvancedSubTab:Button("Refresh Large Data Sources", function()
+    LargeDropdown:Refresh(LargeDropdownItems)
+    LargeMultiSelect:Refresh(LargeMultiSelectItems, true, false)
+    StateLabel:Refresh("State: Refreshed large dropdown/list data")
+end)
+
+HiddenUntilEnabledLabel:Refresh("This label appears when advanced controls are enabled.")
 
 Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
     CleanupRemovedPlayers()
