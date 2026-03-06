@@ -18,7 +18,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-06.53",
+    Build = "2026-03-06.54",
     BindDebug = false,
     CallbackSuspendDepth = 0,
     BatchUpdateDepth = 0,
@@ -7572,6 +7572,336 @@ local Defaults; do
         self:ApplyWindowOptions();
         self:AttachWindowPersistence(WindowData, Name, Options);
         return WindowData
+    end
+
+    function Library:CreateImagePreviewWindow(Name, Options)
+        if type(Name) == "table" and Options == nil then
+            Options = Name;
+            Name = nil;
+        end
+
+        Options = Options or {};
+
+        local Title = tostring(Name or Options.title or "Image Preview");
+        local WindowOptions = {};
+        local ActiveOptions = self:GetWindowOptions();
+        if type(ActiveOptions) == "table" then
+            for Key, Value in next, ActiveOptions do
+                WindowOptions[Key] = Value;
+            end
+        end
+        if type(Options.windowOptions) == "table" then
+            for Key, Value in next, Options.windowOptions do
+                WindowOptions[Key] = Value;
+            end
+        end
+
+        local function ApplyWindowOverride(Key, Value)
+            if Value ~= nil then
+                WindowOptions[Key] = Value;
+            end
+        end
+
+        local function ResolveOption(...)
+            local Values = {...};
+            for Index = 1, select("#", ...) do
+                if Values[Index] ~= nil then
+                    return Values[Index];
+                end
+            end
+            return nil;
+        end
+
+        ApplyWindowOverride("width", ResolveOption(Options.windowWidth, Options.width));
+        ApplyWindowOverride("minwidth", ResolveOption(Options.windowMinWidth, Options.minwidth));
+        ApplyWindowOverride("maxwidth", ResolveOption(Options.windowMaxWidth, Options.maxwidth));
+        ApplyWindowOverride("resizable", ResolveOption(Options.windowResizable, Options.resizable));
+        ApplyWindowOverride("resizeGrip", Options.resizeGrip);
+        ApplyWindowOverride("resizeMinWidth", Options.resizeMinWidth);
+        ApplyWindowOverride("resizeMaxWidth", Options.resizeMaxWidth);
+        ApplyWindowOverride("autowidth", Options.windowAutoWidth);
+        ApplyWindowOverride("autowidthpadding", Options.windowAutoWidthPadding);
+        ApplyWindowOverride("itemspacing", Options.windowItemSpacing);
+        ApplyWindowOverride("persistwindow", ResolveOption(Options.persistwindow, Options.persistWindow, Options.persist));
+        ApplyWindowOverride("windowPersistence", Options.windowPersistence);
+        ApplyWindowOverride("windowPersistenceOptions", Options.windowPersistenceOptions);
+
+        local PreviousOptions = self.Options;
+        local WindowData = self:CreateWindow(Title, WindowOptions);
+        if PreviousOptions then
+            self.Options = PreviousOptions;
+        end
+        if type(WindowData) ~= "table" or (not WindowData.object) then
+            return nil;
+        end
+
+        local PreviewPadding = math.max(0, math.floor((tonumber(Options.padding) or 5) + 0.5));
+        local PreviewHeight = math.max(64, math.floor((tonumber(Options.previewHeight or Options.height) or 180) + 0.5));
+        local CaptionHeight = math.max(16, math.floor((tonumber(Options.captionHeight) or 20) + 0.5));
+        local CurrentCaption = tostring(Options.caption or "");
+        local InitialImage = Options.image or Options.imageId or Options.asset or "";
+        local CurrentImageWidth = tonumber(Options.previewWidth or Options.imageWidth);
+        if CurrentImageWidth then
+            CurrentImageWidth = math.max(40, math.floor(CurrentImageWidth + 0.5));
+        end
+
+        local function NormalizeImage(ImageValue)
+            if ImageValue == nil then
+                return "";
+            end
+            if type(ImageValue) == "number" then
+                return "rbxassetid://" .. tostring(math.floor(ImageValue + 0.5));
+            end
+            local Text = tostring(ImageValue);
+            if Text == "" then
+                return "";
+            end
+            if string.match(Text, "^%d+$") then
+                return "rbxassetid://" .. Text;
+            end
+            return Text;
+        end
+
+        local function ResolveScaleType(Value)
+            if typeof(Value) == "EnumItem" and Value.EnumType == Enum.ScaleType then
+                return Value;
+            end
+            local Text = string.lower(tostring(Value or ""));
+            if Text == "stretch" then
+                return Enum.ScaleType.Stretch;
+            end
+            if Text == "slice" then
+                return Enum.ScaleType.Slice;
+            end
+            if Text == "tile" then
+                return Enum.ScaleType.Tile;
+            end
+            if Text == "crop" then
+                return Enum.ScaleType.Crop;
+            end
+            return Enum.ScaleType.Fit;
+        end
+
+        local PreviewRoot = self:Create("Frame", {
+            Name = "ImagePreviewRoot";
+            BackgroundTransparency = 1;
+            Size = UDim2.new(1, 0, 0, 0);
+            LayoutOrder = WindowData:GetOrder();
+            Parent = WindowData.container;
+        });
+
+        local PreviewFrame = self:Create("Frame", {
+            Name = "ImagePreviewFrame";
+            BackgroundColor3 = (typeof(Options.backgroundColor or Options.bgColor) == "Color3" and (Options.backgroundColor or Options.bgColor))
+                or (WindowData.options and WindowData.options.boxcolor)
+                or Library.Options.boxcolor;
+            BorderColor3 = (typeof(Options.borderColor) == "Color3" and Options.borderColor)
+                or (WindowData.options and WindowData.options.bordercolor)
+                or Library.Options.bordercolor;
+            BorderSizePixel = 1;
+            ClipsDescendants = true;
+            Position = UDim2.new(0, PreviewPadding, 0, PreviewPadding);
+            Size = UDim2.new(1, -(PreviewPadding * 2), 0, PreviewHeight);
+            Parent = PreviewRoot;
+        });
+
+        local PreviewImage = self:Create("ImageLabel", {
+            Name = "Image";
+            BackgroundTransparency = 1;
+            Size = UDim2.new(1, 0, 1, 0);
+            Position = UDim2.new(0, 0, 0, 0);
+            Image = NormalizeImage(InitialImage);
+            ScaleType = ResolveScaleType(Options.scaleType);
+            ImageColor3 = (typeof(Options.imageColor or Options.color) == "Color3" and (Options.imageColor or Options.color)) or Color3.fromRGB(255, 255, 255);
+            ImageTransparency = math.clamp(tonumber(Options.imageTransparency or Options.transparency) or 0, 0, 1);
+            Parent = PreviewFrame;
+        });
+
+        local CaptionLabel = self:Create("TextLabel", {
+            Name = "Caption";
+            BackgroundTransparency = 1;
+            BorderSizePixel = 0;
+            Text = CurrentCaption;
+            TextXAlignment = Enum.TextXAlignment.Left;
+            TextYAlignment = Enum.TextYAlignment.Center;
+            Position = UDim2.new(0, PreviewPadding, 0, PreviewPadding + PreviewHeight + 4);
+            Size = UDim2.new(1, -(PreviewPadding * 2), 0, CaptionHeight);
+            Font = (WindowData.options and WindowData.options.font) or Library.Options.font;
+            TextSize = (WindowData.options and WindowData.options.fontsize) or Library.Options.fontsize;
+            TextColor3 = (WindowData.options and WindowData.options.textcolor) or Library.Options.textcolor;
+            TextStrokeTransparency = (WindowData.options and WindowData.options.textstroke) or Library.Options.textstroke;
+            TextStrokeColor3 = (WindowData.options and WindowData.options.strokecolor) or Library.Options.strokecolor;
+            Visible = (CurrentCaption ~= "");
+            Parent = PreviewRoot;
+        });
+
+        local function GetEffectivePreviewWidth()
+            if CurrentImageWidth == nil then
+                return nil;
+            end
+            local Width = math.max(40, math.floor(CurrentImageWidth + 0.5));
+            local MaxWidth = math.max(40, ((WindowData:GetWidth() or 190) - (PreviewPadding * 2)));
+            return math.clamp(Width, 40, MaxWidth);
+        end
+
+        local IsUpdatingLayout = false;
+        local function UpdateLayout()
+            if IsUpdatingLayout then
+                return;
+            end
+            IsUpdatingLayout = true;
+            if (not PreviewRoot.Parent) or (not WindowData.object) or (not WindowData.object.Parent) then
+                IsUpdatingLayout = false;
+                return;
+            end
+
+            local CaptionVisible = (CurrentCaption ~= "");
+            local BaseOffsetY = PreviewPadding;
+
+            local EffectiveWidth = GetEffectivePreviewWidth();
+            if EffectiveWidth then
+                local XOffset = math.max(PreviewPadding, math.floor(((WindowData:GetWidth() or (EffectiveWidth + (PreviewPadding * 2))) - EffectiveWidth) * 0.5));
+                PreviewFrame.Size = UDim2.new(0, EffectiveWidth, 0, PreviewHeight);
+                PreviewFrame.Position = UDim2.new(0, XOffset, 0, BaseOffsetY);
+            else
+                PreviewFrame.Size = UDim2.new(1, -(PreviewPadding * 2), 0, PreviewHeight);
+                PreviewFrame.Position = UDim2.new(0, PreviewPadding, 0, BaseOffsetY);
+            end
+
+            local TotalHeight = (PreviewPadding * 2) + PreviewHeight;
+            if CaptionVisible then
+                CaptionLabel.Visible = true;
+                CaptionLabel.Text = CurrentCaption;
+                CaptionLabel.Position = UDim2.new(0, PreviewPadding, 0, BaseOffsetY + PreviewHeight + 4);
+                CaptionLabel.Size = UDim2.new(1, -(PreviewPadding * 2), 0, CaptionHeight);
+                TotalHeight = TotalHeight + CaptionHeight + 2;
+            else
+                CaptionLabel.Visible = false;
+                CaptionLabel.Text = "";
+            end
+
+            PreviewRoot.Size = UDim2.new(1, 0, 0, TotalHeight);
+            WindowData:Resize();
+            IsUpdatingLayout = false;
+        end
+
+        table.insert(WindowData.InternalConnections, WindowData.object:GetPropertyChangedSignal("Size"):Connect(function()
+            UpdateLayout();
+        end));
+
+        UpdateLayout();
+
+        local ApiData = {
+            Window = WindowData;
+            Root = PreviewRoot;
+            Frame = PreviewFrame;
+            Image = PreviewImage;
+            CaptionLabel = CaptionLabel;
+            SetImage = function(_, ImageValue)
+                local Normalized = NormalizeImage(ImageValue);
+                PreviewImage.Image = Normalized;
+                return Normalized;
+            end;
+            GetImage = function()
+                return PreviewImage.Image;
+            end;
+            SetCaption = function(_, Text)
+                CurrentCaption = tostring(Text or "");
+                UpdateLayout();
+                return CurrentCaption;
+            end;
+            GetCaption = function()
+                return CurrentCaption;
+            end;
+            SetScaleType = function(_, ScaleType)
+                PreviewImage.ScaleType = ResolveScaleType(ScaleType);
+                return PreviewImage.ScaleType;
+            end;
+            GetScaleType = function()
+                return PreviewImage.ScaleType;
+            end;
+            SetColor = function(_, ColorValue)
+                if typeof(ColorValue) == "Color3" then
+                    PreviewImage.ImageColor3 = ColorValue;
+                end
+                return PreviewImage.ImageColor3;
+            end;
+            GetColor = function()
+                return PreviewImage.ImageColor3;
+            end;
+            SetTransparency = function(_, Alpha)
+                PreviewImage.ImageTransparency = math.clamp(tonumber(Alpha) or PreviewImage.ImageTransparency, 0, 1);
+                return PreviewImage.ImageTransparency;
+            end;
+            GetTransparency = function()
+                return PreviewImage.ImageTransparency;
+            end;
+            SetBackgroundColor = function(_, ColorValue)
+                if typeof(ColorValue) == "Color3" then
+                    PreviewFrame.BackgroundColor3 = ColorValue;
+                end
+                return PreviewFrame.BackgroundColor3;
+            end;
+            GetBackgroundColor = function()
+                return PreviewFrame.BackgroundColor3;
+            end;
+            SetBorderColor = function(_, ColorValue)
+                if typeof(ColorValue) == "Color3" then
+                    PreviewFrame.BorderColor3 = ColorValue;
+                end
+                return PreviewFrame.BorderColor3;
+            end;
+            GetBorderColor = function()
+                return PreviewFrame.BorderColor3;
+            end;
+            SetSize = function(_, Width, Height)
+                if Width ~= nil then
+                    if type(Width) == "string" and string.lower(Width) == "auto" then
+                        CurrentImageWidth = nil;
+                    else
+                        CurrentImageWidth = math.max(40, math.floor((tonumber(Width) or CurrentImageWidth or 40) + 0.5));
+                    end
+                end
+                if Height ~= nil then
+                    PreviewHeight = math.max(64, math.floor((tonumber(Height) or PreviewHeight) + 0.5));
+                end
+                UpdateLayout();
+                return CurrentImageWidth, PreviewHeight;
+            end;
+            GetSize = function()
+                return CurrentImageWidth, PreviewHeight;
+            end;
+            SetVisible = function(_, State)
+                if WindowData.object and WindowData.object.Parent then
+                    WindowData.object.Visible = (State == true);
+                end
+                return WindowData.object and WindowData.object.Visible == true;
+            end;
+            IsVisible = function()
+                return WindowData.object and WindowData.object.Visible == true;
+            end;
+            SetPosition = function(_, XOffset, YOffset)
+                return WindowData:SetPosition(XOffset, YOffset);
+            end;
+            GetPosition = function()
+                return WindowData:GetPosition();
+            end;
+            Center = function()
+                return WindowData:Center();
+            end;
+            BringToFront = function()
+                return WindowData:BringToFront();
+            end;
+            Destroy = function()
+                return WindowData:Destroy();
+            end;
+        };
+
+        return ApiData;
+    end
+
+    function Library:ImagePreviewWindow(Name, Options)
+        return self:CreateImagePreviewWindow(Name, Options);
     end
 
     function Library:Destroy()
