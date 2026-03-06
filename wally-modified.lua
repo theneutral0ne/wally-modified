@@ -18,7 +18,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "v47",
+    Build = "2026-03-06.48",
     BindDebug = false
 };
 local Defaults; do
@@ -210,21 +210,52 @@ local Defaults; do
                 end)
             end
 
-            WindowToggle.MouseButton1Click:Connect(function()
-                WindowData.toggled = not WindowData.toggled;
+            local function ApplyWindowToggleState(NewState, Animate)
+                WindowData.toggled = (NewState == true);
                 WindowToggle.Text = (WindowData.toggled and "-" or "+");
+                NewWindow:SetAttribute("WallyWindowToggled", WindowData.toggled);
                 if (not WindowData.toggled) then
                     WindowData.container.ClipsDescendants = true;
                 end
-                local TargetSize = WindowData.toggled and UDim2.new(1, 0, 0, GetContentHeight()) or UDim2.new(1, 0, 0, 0);
-                local TargetDirection = WindowData.toggled and "In" or "Out"
 
-                WindowData.container:TweenSize(TargetSize, TargetDirection, "Quint", .3, true)
-                task.wait(.3)
-                if WindowData.toggled then
-                    WindowData.container.ClipsDescendants = false;
+                local TargetSize = WindowData.toggled and UDim2.new(1, 0, 0, GetContentHeight()) or UDim2.new(1, 0, 0, 0);
+                if Animate == false then
+                    WindowData.container.Size = TargetSize;
+                    if WindowData.toggled then
+                        WindowData.container.ClipsDescendants = false;
+                    end
+                else
+                    local TargetDirection = WindowData.toggled and "In" or "Out";
+                    WindowData.container:TweenSize(TargetSize, TargetDirection, "Quint", .3, true);
+                    task.delay(0.31, function()
+                        if WindowData and WindowData.container and WindowData.container.Parent and WindowData.toggled then
+                            WindowData.container.ClipsDescendants = false;
+                        end
+                    end);
                 end
+
+                if type(WindowData.OnToggleChanged) == "function" then
+                    pcall(WindowData.OnToggleChanged, WindowData.toggled);
+                end
+            end
+
+            WindowToggle.MouseButton1Click:Connect(function()
+                ApplyWindowToggleState(not WindowData.toggled, true);
             end)
+
+            function WindowData:SetMinimized(IsMinimized, Animate)
+                ApplyWindowToggleState(not (IsMinimized == true), Animate ~= false);
+            end
+
+            function WindowData:SetExpanded(IsExpanded, Animate)
+                ApplyWindowToggleState(IsExpanded ~= false, Animate ~= false);
+            end
+
+            function WindowData:GetMinimized()
+                return not WindowData.toggled;
+            end
+
+            NewWindow:SetAttribute("WallyWindowToggled", WindowData.toggled);
 
             return WindowData;
         end
@@ -273,6 +304,773 @@ local Defaults; do
             end
 
             return "__WallyAuto_" .. Prefix .. "_" .. tostring(Kind or "Flag") .. "_" .. tostring(self.AutoFlagCounter) .. "_" .. NamePart;
+        end
+
+        local function CoerceBoolean(Value, DefaultValue)
+            if Value == nil then
+                return DefaultValue == true;
+            end
+            return Value == true;
+        end
+
+        local function NormalizeDependencyMode(Value)
+            local Mode = string.lower(tostring(Value or "all"));
+            if Mode == "or" then
+                Mode = "any";
+            end
+            if Mode ~= "any" then
+                Mode = "all";
+            end
+            return Mode;
+        end
+
+        local function ResolveDependencyFlagValue(Location, FlagName)
+            if type(FlagName) ~= "string" or FlagName == "" then
+                return nil;
+            end
+
+            if type(Location) == "table" and Location[FlagName] ~= nil then
+                return Location[FlagName];
+            end
+
+            local Entry = Library.RegisteredFlags and Library.RegisteredFlags[FlagName];
+            local Locations = Entry and Entry.Locations;
+            if type(Locations) == "table" then
+                for _, OtherLocation in next, Locations do
+                    if type(OtherLocation) == "table" and OtherLocation[FlagName] ~= nil then
+                        return OtherLocation[FlagName];
+                    end
+                end
+            end
+
+            local Fallback = Library.FlagLocations or {};
+            for _, OtherLocation in next, Fallback do
+                if type(OtherLocation) == "table" and OtherLocation[FlagName] ~= nil then
+                    return OtherLocation[FlagName];
+                end
+            end
+
+            return nil;
+        end
+
+        local function EvaluateSingleDependencyRule(Rule, Location)
+            if Rule == nil then
+                return true;
+            end
+
+            local RuleType = type(Rule);
+            if RuleType == "function" then
+                local Ok, Result = pcall(Rule, Location, Library);
+                return Ok and Result == true;
+            end
+
+            if RuleType == "string" then
+                local Value = ResolveDependencyFlagValue(Location, Rule);
+                return not not Value;
+            end
+
+            if RuleType ~= "table" then
+                return Rule == true;
+            end
+
+            if type(Rule.flag) == "string" and Rule.flag ~= "" then
+                local Value = ResolveDependencyFlagValue(Location, Rule.flag);
+
+                if type(Rule.predicate) == "function" then
+                    local Ok, Result = pcall(Rule.predicate, Value, Location, Library);
+                    if not Ok then
+                        return false;
+                    end
+                    return Result == true;
+                end
+
+                if Rule.exists ~= nil then
+                    local Exists = (Value ~= nil);
+                    if Exists ~= (Rule.exists == true) then
+                        return false;
+                    end
+                end
+
+                if Rule.min ~= nil and tonumber(Value) then
+                    if tonumber(Value) < tonumber(Rule.min) then
+                        return false;
+                    end
+                end
+                if Rule.max ~= nil and tonumber(Value) then
+                    if tonumber(Value) > tonumber(Rule.max) then
+                        return false;
+                    end
+                end
+
+                if Rule.notValue ~= nil and Value == Rule.notValue then
+                    return false;
+                end
+                if Rule.notEquals ~= nil and Value == Rule.notEquals then
+                    return false;
+                end
+
+                if Rule.value ~= nil then
+                    return Value == Rule.value;
+                end
+                if Rule.equals ~= nil then
+                    return Value == Rule.equals;
+                end
+                if Rule.is ~= nil then
+                    return Value == Rule.is;
+                end
+
+                return not not Value;
+            end
+
+            local IsArray = false;
+            for Key in next, Rule do
+                if type(Key) == "number" then
+                    IsArray = true;
+                    break;
+                end
+            end
+
+            if IsArray then
+                local Mode = NormalizeDependencyMode(Rule.mode or Rule.operator);
+                if Mode == "any" then
+                    for _, SubRule in next, Rule do
+                        if EvaluateSingleDependencyRule(SubRule, Location) then
+                            return true;
+                        end
+                    end
+                    return false;
+                end
+
+                for _, SubRule in next, Rule do
+                    if not EvaluateSingleDependencyRule(SubRule, Location) then
+                        return false;
+                    end
+                end
+                return true;
+            end
+
+            for FlagName, ExpectedValue in next, Rule do
+                if FlagName ~= "mode" and FlagName ~= "operator" then
+                    local CurrentValue = ResolveDependencyFlagValue(Location, tostring(FlagName));
+                    if CurrentValue ~= ExpectedValue then
+                        return false;
+                    end
+                end
+            end
+            return true;
+        end
+
+        function Types:ApplyControlSearchFilter()
+            local Query = string.lower(tostring(self.ControlSearchQuery or ""));
+            local HasQuery = Query ~= "";
+            local Controls = self.Controls or {};
+            for _, ControlData in next, Controls do
+                local SearchText = string.lower(tostring(ControlData.SearchText or ""));
+                local IsMatch = (not HasQuery) or (string.find(SearchText, Query, 1, true) ~= nil);
+                if type(ControlData.SetSearchMatch) == "function" then
+                    pcall(ControlData.SetSearchMatch, IsMatch);
+                elseif ControlData.Root and ControlData.Root.Parent then
+                    ControlData.Root.Visible = IsMatch;
+                end
+            end
+
+            if type(self.Resize) == "function" then
+                self:Resize();
+            end
+            if type(self.RefreshTabHostSize) == "function" then
+                self:RefreshTabHostSize();
+            end
+        end
+
+        function Types:SetSearchQuery(Query)
+            self.ControlSearchQuery = tostring(Query or "");
+            self:ApplyControlSearchFilter();
+        end
+
+        function Types:AttachControlFeatures(Root, Options, Api, InteractiveTargets, SearchText)
+            Options = Options or {};
+            Api = Api or {};
+
+            local Location = Options.location or self.flags;
+            local ControlVisible = CoerceBoolean(Options.visible, true);
+            local ControlEnabled = CoerceBoolean(Options.enabled, true);
+            local SearchMatched = true;
+            local VisibilityRule = Options.dependsOn or Options.visibleWhen or Options.showWhen;
+            local EnabledRule = Options.enabledWhen or Options.enableWhen;
+            local TooltipText = Options.tooltip or Options.help or Options.description or Options.hint;
+            local LastShown = nil;
+            local LastEnabled = nil;
+
+            local Targets = {};
+            if type(InteractiveTargets) == "table" then
+                for _, Target in next, InteractiveTargets do
+                    if typeof(Target) == "Instance" then
+                        table.insert(Targets, Target);
+                    end
+                end
+            elseif typeof(InteractiveTargets) == "Instance" then
+                table.insert(Targets, InteractiveTargets);
+            end
+
+            local function SetTargetEnabled(Target, IsEnabled)
+                if not Target or (not Target.Parent) or (not Target:IsA("GuiObject")) then
+                    return;
+                end
+
+                Target.Active = IsEnabled;
+                if Target:IsA("TextButton") or Target:IsA("ImageButton") then
+                    Target.AutoButtonColor = IsEnabled;
+                end
+                if Target:IsA("TextBox") then
+                    pcall(function()
+                        Target.TextEditable = IsEnabled;
+                    end);
+                end
+
+                if IsEnabled then
+                    if Target:GetAttribute("WallyDisabledState") ~= true then
+                        return;
+                    end
+                    if Target:GetAttribute("WallyOrigTextTransparency") ~= nil then
+                        local OldTextTransparency = tonumber(Target:GetAttribute("WallyOrigTextTransparency"));
+                        if OldTextTransparency ~= nil and (Target:IsA("TextLabel") or Target:IsA("TextButton") or Target:IsA("TextBox")) then
+                            pcall(function()
+                                Target.TextTransparency = OldTextTransparency;
+                            end);
+                        end
+                    end
+                    if Target:GetAttribute("WallyOrigBackgroundTransparency") ~= nil then
+                        local OldBgTransparency = tonumber(Target:GetAttribute("WallyOrigBackgroundTransparency"));
+                        if OldBgTransparency ~= nil then
+                            Target.BackgroundTransparency = OldBgTransparency;
+                        end
+                    end
+                    Target:SetAttribute("WallyDisabledState", false);
+                else
+                    if Target:GetAttribute("WallyDisabledState") == true then
+                        return;
+                    end
+                    if Target:IsA("TextLabel") or Target:IsA("TextButton") or Target:IsA("TextBox") then
+                        if Target:GetAttribute("WallyOrigTextTransparency") == nil then
+                            Target:SetAttribute("WallyOrigTextTransparency", Target.TextTransparency);
+                        end
+                        Target.TextTransparency = math.clamp((tonumber(Target.TextTransparency) or 0) + 0.35, 0, 1);
+                    end
+                    if Target:GetAttribute("WallyOrigBackgroundTransparency") == nil then
+                        Target:SetAttribute("WallyOrigBackgroundTransparency", Target.BackgroundTransparency);
+                    end
+                    Target.BackgroundTransparency = math.clamp((tonumber(Target.BackgroundTransparency) or 0) + 0.2, 0, 1);
+                    Target:SetAttribute("WallyDisabledState", true);
+                end
+            end
+
+            local function EvaluateDependencies()
+                local VisiblePass = EvaluateSingleDependencyRule(VisibilityRule, Location);
+                local EnabledPass = EvaluateSingleDependencyRule(EnabledRule, Location);
+                local ShouldShow = ControlVisible and SearchMatched and VisiblePass;
+                local ShouldEnable = ControlEnabled and EnabledPass;
+                local VisibilityChanged = (LastShown ~= ShouldShow);
+                local EnabledChanged = (LastEnabled ~= ShouldEnable);
+
+                if Root and Root.Parent then
+                    Root.Visible = ShouldShow;
+                end
+
+                if EnabledChanged then
+                    for _, Target in next, Targets do
+                        SetTargetEnabled(Target, ShouldEnable);
+                    end
+                end
+
+                if VisibilityChanged then
+                    if type(self.Resize) == "function" then
+                        self:Resize();
+                    end
+                    if type(self.RefreshTabHostSize) == "function" then
+                        self:RefreshTabHostSize();
+                    end
+                end
+
+                LastShown = ShouldShow;
+                LastEnabled = ShouldEnable;
+                return ShouldShow, ShouldEnable;
+            end
+
+            function Api:SetVisible(State)
+                ControlVisible = CoerceBoolean(State, true);
+                EvaluateDependencies();
+                return ControlVisible;
+            end
+
+            function Api:GetVisible()
+                return ControlVisible;
+            end
+
+            function Api:SetEnabled(State)
+                ControlEnabled = CoerceBoolean(State, true);
+                EvaluateDependencies();
+                return ControlEnabled;
+            end
+
+            function Api:GetEnabled()
+                return ControlEnabled;
+            end
+
+            function Api:SetVisibilityDependency(Rule)
+                VisibilityRule = Rule;
+                EvaluateDependencies();
+                return true;
+            end
+
+            function Api:SetEnabledDependency(Rule)
+                EnabledRule = Rule;
+                EvaluateDependencies();
+                return true;
+            end
+
+            function Api:SetDependency(Rule)
+                VisibilityRule = Rule;
+                EvaluateDependencies();
+                return true;
+            end
+
+            function Api:SetSearchMatch(IsMatch)
+                SearchMatched = (IsMatch ~= false);
+                EvaluateDependencies();
+                return SearchMatched;
+            end
+
+            function Api:SetTooltip(Text)
+                TooltipText = Text;
+                if Root and Root.Parent then
+                    Library:AttachTooltip(Root, function()
+                        return TooltipText;
+                    end);
+                end
+                return true;
+            end
+
+            function Api:RefreshDependency()
+                return EvaluateDependencies();
+            end
+
+            if Root and Root.Parent and Options.searchIgnore ~= true then
+                self.Controls = self.Controls or {};
+                table.insert(self.Controls, {
+                    Root = Root;
+                    SearchText = tostring(SearchText or "");
+                    SetSearchMatch = function(IsMatch)
+                        Api:SetSearchMatch(IsMatch);
+                    end;
+                });
+            end
+
+            Library.ControlApisByRoot = Library.ControlApisByRoot or {};
+            if Root then
+                Library.ControlApisByRoot[Root] = Api;
+            end
+
+            local FlagName = tostring(Options.flag or "");
+            if FlagName ~= "" then
+                Library.ControlApisByFlag = Library.ControlApisByFlag or {};
+                Library.ControlApisByFlag[FlagName] = Api;
+            end
+
+            Library.DependencyControls = Library.DependencyControls or {};
+            table.insert(Library.DependencyControls, {
+                Root = Root;
+                Refresh = function()
+                    Api:RefreshDependency();
+                end;
+            });
+
+            if not Library.DependencyConnection then
+                local LastTick = 0;
+                Library.DependencyConnection = RunService.Heartbeat:Connect(function()
+                    local Now = os.clock();
+                    if (Now - LastTick) < 0.1 then
+                        return;
+                    end
+                    LastTick = Now;
+
+                    local Entries = Library.DependencyControls or {};
+                    for Index = #Entries, 1, -1 do
+                        local Entry = Entries[Index];
+                        local RootObject = Entry and Entry.Root;
+                        local Refresh = Entry and Entry.Refresh;
+                        if (not RootObject) or (not RootObject.Parent) or type(Refresh) ~= "function" then
+                            table.remove(Entries, Index);
+                        else
+                            pcall(Refresh);
+                        end
+                    end
+                end);
+            end
+
+            if TooltipText ~= nil then
+                Api:SetTooltip(TooltipText);
+            end
+
+            if self.ControlSearchQuery and self.ControlSearchQuery ~= "" then
+                local Query = string.lower(tostring(self.ControlSearchQuery));
+                local ControlText = string.lower(tostring(SearchText or ""));
+                SearchMatched = string.find(ControlText, Query, 1, true) ~= nil;
+            end
+
+            EvaluateDependencies();
+            return Api;
+        end
+
+        local function WrapInstanceApi(InstanceObject, ApiData)
+            return setmetatable(ApiData or {}, {
+                __index = function(TableData, Key)
+                    local Direct = rawget(TableData, Key);
+                    if Direct ~= nil then
+                        return Direct;
+                    end
+                    if not InstanceObject then
+                        return nil;
+                    end
+
+                    local OkRead, Value = pcall(function()
+                        return InstanceObject[Key];
+                    end);
+                    if not OkRead then
+                        return nil;
+                    end
+
+                    if type(Value) == "function" then
+                        return function(_, ...)
+                            return Value(InstanceObject, ...);
+                        end
+                    end
+                    return Value;
+                end,
+                __newindex = function(TableData, Key, Value)
+                    if rawget(TableData, Key) ~= nil then
+                        rawset(TableData, Key, Value);
+                        return;
+                    end
+
+                    if InstanceObject then
+                        local OkWrite = pcall(function()
+                            InstanceObject[Key] = Value;
+                        end);
+                        if OkWrite then
+                            return;
+                        end
+                    end
+
+                    rawset(TableData, Key, Value);
+                end,
+            });
+        end
+
+        local function EnsureTabHost(Owner, TabOptions)
+            if Owner.TabHost and Owner.TabHost.Parent and Owner.TabHeader and Owner.TabPages then
+                return Owner.TabHost, Owner.TabHeader, Owner.TabPages;
+            end
+
+            local HeaderHeight = math.clamp(math.floor((tonumber(TabOptions and (TabOptions.headerHeight or TabOptions.tabHeaderHeight) or 22) or 22) + 0.5), 16, 30);
+            local HostFrame = Library:Create("Frame", {
+                Name = "TabHost";
+                BackgroundTransparency = 1;
+                Size = UDim2.new(1, 0, 0, HeaderHeight + 4);
+                LayoutOrder = Owner:GetOrder();
+                Parent = Owner.container;
+                Library:Create("Frame", {
+                    Name = "Header";
+                    Position = UDim2.new(0, 5, 0, 0);
+                    Size = UDim2.new(1, -10, 0, HeaderHeight);
+                    BackgroundColor3 = Owner.options.dropcolor;
+                    BorderColor3 = Owner.options.bordercolor;
+                    Library:Create("UIListLayout", {
+                        Name = "List";
+                        FillDirection = Enum.FillDirection.Horizontal;
+                        SortOrder = Enum.SortOrder.LayoutOrder;
+                        Padding = UDim.new(0, 2);
+                    });
+                });
+                Library:Create("Frame", {
+                    Name = "Pages";
+                    Position = UDim2.new(0, 5, 0, HeaderHeight + 2);
+                    Size = UDim2.new(1, -10, 0, 0);
+                    BackgroundTransparency = 1;
+                    BorderSizePixel = 0;
+                    ClipsDescendants = false;
+                });
+            });
+
+            Owner.TabHost = HostFrame;
+            Owner.TabHeader = HostFrame:FindFirstChild("Header");
+            Owner.TabPages = HostFrame:FindFirstChild("Pages");
+            Owner.TabHeaderHeight = HeaderHeight;
+            Owner.Tabs = Owner.Tabs or {};
+            Owner.ActiveTab = Owner.ActiveTab or nil;
+
+            function Owner:RefreshTabHostSize()
+                if (not self.TabHost) or (not self.TabHost.Parent) then
+                    return;
+                end
+
+                local ContentHeight = 0;
+                for _, Entry in next, self.Tabs do
+                    local IsActive = (self.ActiveTab == Entry);
+                    if Entry.Button and Entry.Button.Parent then
+                        Entry.Button.BackgroundColor3 = (IsActive and self.options.btncolor or self.options.dropcolor);
+                        Entry.Button.TextColor3 = self.options.textcolor;
+                    end
+
+                    if Entry.Page and Entry.Page.Parent then
+                        Entry.Page.Visible = IsActive;
+                        if IsActive then
+                            local TabList = Entry.TabObject and Entry.TabObject.list;
+                            if TabList and TabList.Parent then
+                                ContentHeight = math.max(TabList.AbsoluteContentSize.Y + 5, 0);
+                            else
+                                local Height = 0;
+                                for _, Child in next, Entry.Page:GetChildren() do
+                                    if not Child:IsA("UIListLayout") then
+                                        Height = Height + Child.AbsoluteSize.Y;
+                                    end
+                                end
+                                ContentHeight = Height + 5;
+                            end
+                            Entry.Page.Size = UDim2.new(1, 0, 0, ContentHeight);
+                        else
+                            Entry.Page.Size = UDim2.new(1, 0, 0, 0);
+                        end
+                    end
+                end
+
+                self.TabPages.Size = UDim2.new(1, -10, 0, ContentHeight);
+                self.TabHost.Size = UDim2.new(1, 0, 0, self.TabHeaderHeight + 2 + ContentHeight);
+
+                if type(self.Resize) == "function" then
+                    self:Resize();
+                end
+                if self.ParentTabOwner and type(self.ParentTabOwner.RefreshTabHostSize) == "function" then
+                    self.ParentTabOwner:RefreshTabHostSize();
+                end
+            end
+
+            return Owner.TabHost, Owner.TabHeader, Owner.TabPages;
+        end
+
+        function Types:Tab(Name, Options)
+            Options = Options or {};
+            local TabName = tostring(Name or "Tab");
+
+            local _, Header, Pages = EnsureTabHost(self, Options);
+            self.Tabs = self.Tabs or {};
+
+            local Existing;
+            for _, Entry in next, self.Tabs do
+                if Entry.Name == TabName then
+                    Existing = Entry;
+                    break;
+                end
+            end
+            if Existing then
+                self.ActiveTab = Existing;
+                if type(self.RefreshTabHostSize) == "function" then
+                    self:RefreshTabHostSize();
+                end
+                return Existing.TabObject;
+            end
+
+            local TabButton = Library:Create("TextButton", {
+                Name = "TabButton_" .. tostring(#self.Tabs + 1);
+                Text = TabName;
+                AutoButtonColor = true;
+                Size = UDim2.new(0, math.clamp((string.len(TabName) * 7) + 22, 50, 170), 1, 0);
+                BackgroundColor3 = self.options.dropcolor;
+                BorderColor3 = self.options.bordercolor;
+                TextColor3 = self.options.textcolor;
+                TextStrokeTransparency = self.options.textstroke;
+                TextStrokeColor3 = self.options.strokecolor;
+                Font = self.options.font;
+                TextSize = self.options.fontsize;
+                Parent = Header;
+                LayoutOrder = #self.Tabs + 1;
+            });
+
+            local Page = Library:Create("Frame", {
+                Name = "TabPage_" .. tostring(#self.Tabs + 1);
+                BackgroundTransparency = 1;
+                Visible = false;
+                BorderSizePixel = 0;
+                Size = UDim2.new(1, 0, 0, 0);
+                Parent = Pages;
+                Library:Create("UIListLayout", {
+                    Name = "List";
+                    SortOrder = Enum.SortOrder.LayoutOrder;
+                    Padding = UDim.new(0, math.clamp(math.floor((tonumber(self.options.itemspacing) or 0) + 0.5), 0, 40));
+                });
+            });
+
+            local PageList = Page:FindFirstChild("List");
+            local TabObject = setmetatable({
+                Count = 0;
+                object = Page;
+                ContainerData = Page;
+                container = Page;
+                ListData = PageList;
+                list = PageList;
+                options = self.options;
+                Options = self.options;
+                toggled = true;
+                flags = self.flags;
+                OrderData = 0;
+                order = 0;
+                ParentWindow = self.ParentWindow or self;
+                ParentTabOwner = self;
+                AutoFlagPrefix = tostring((self.AutoFlagPrefix or "Tab")) .. "_" .. TabName;
+            }, Types);
+
+            local Entry = {
+                Name = TabName;
+                Button = TabButton;
+                Page = Page;
+                TabObject = TabObject;
+            };
+            table.insert(self.Tabs, Entry);
+
+            if PageList then
+                PageList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+                    if type(TabObject.Resize) == "function" then
+                        TabObject:Resize();
+                    end
+                    if type(self.RefreshTabHostSize) == "function" then
+                        self:RefreshTabHostSize();
+                    end
+                end);
+            end
+
+            TabButton.MouseButton1Click:Connect(function()
+                self.ActiveTab = Entry;
+                if type(self.RefreshTabHostSize) == "function" then
+                    self:RefreshTabHostSize();
+                end
+            end);
+
+            if not self.ActiveTab then
+                self.ActiveTab = Entry;
+            end
+            if type(self.RefreshTabHostSize) == "function" then
+                self:RefreshTabHostSize();
+            end
+
+            return TabObject;
+        end
+
+        function Types:CreateTab(Name, Options)
+            return self:Tab(Name, Options);
+        end
+
+        function Types:SubTab(Name, Options)
+            return self:Tab(Name, Options);
+        end
+
+        function Types:CreateSubTab(Name, Options)
+            return self:SubTab(Name, Options);
+        end
+
+        function Types:SearchBar(Name, Options, Callback)
+            if type(Options) == "function" and Callback == nil then
+                Callback = Options;
+                Options = {};
+            end
+            Options = Options or {};
+            local Placeholder = tostring(Name or Options.placeholder or "Search Controls");
+            local CallbackData = Callback or function() end;
+
+            local CheckData = Library:Create("Frame", {
+                BackgroundTransparency = 1;
+                Size = UDim2.new(1, 0, 0, 25);
+                LayoutOrder = self:GetOrder();
+                Parent = self.container;
+                Library:Create("TextBox", {
+                    Name = "SearchInput";
+                    Text = tostring(Options.default or "");
+                    PlaceholderText = Placeholder;
+                    ClearTextOnFocus = false;
+                    Font = self.options.font;
+                    TextSize = self.options.fontsize;
+                    TextColor3 = self.options.textcolor;
+                    TextStrokeTransparency = self.options.textstroke;
+                    TextStrokeColor3 = self.options.strokecolor;
+                    PlaceholderColor3 = self.options.placeholdercolor;
+                    BackgroundColor3 = self.options.dropcolor;
+                    BorderColor3 = self.options.bordercolor;
+                    Position = UDim2.new(0, 5, 0, 4);
+                    Size = UDim2.new(1, -10, 0, 20);
+                });
+            });
+
+            local SearchInput = CheckData:FindFirstChild("SearchInput");
+            local IsInternalChange = false;
+
+            local function ApplyQuery(Query)
+                if type(self.SetSearchQuery) == "function" then
+                    self:SetSearchQuery(Query);
+                end
+                CallbackData(Query);
+            end
+
+            SearchInput:GetPropertyChangedSignal("Text"):Connect(function()
+                if IsInternalChange then
+                    return;
+                end
+                ApplyQuery(SearchInput.Text);
+            end);
+
+            self:Resize();
+            local ApiData = {
+                Set = function(_, NewValue, FireCallback)
+                    IsInternalChange = true;
+                    SearchInput.Text = tostring(NewValue or "");
+                    IsInternalChange = false;
+                    if FireCallback ~= false then
+                        ApplyQuery(SearchInput.Text);
+                    else
+                        if type(self.SetSearchQuery) == "function" then
+                            self:SetSearchQuery(SearchInput.Text);
+                        end
+                    end
+                end,
+                Get = function()
+                    return SearchInput.Text;
+                end,
+                Clear = function(_, FireCallback)
+                    IsInternalChange = true;
+                    SearchInput.Text = "";
+                    IsInternalChange = false;
+                    if FireCallback ~= false then
+                        ApplyQuery("");
+                    else
+                        if type(self.SetSearchQuery) == "function" then
+                            self:SetSearchQuery("");
+                        end
+                    end
+                end,
+                Input = SearchInput;
+            };
+
+            if SearchInput.Text ~= "" then
+                ApplyQuery(SearchInput.Text);
+            end
+
+            local FeatureOptions = {};
+            for Key, Value in next, Options do
+                FeatureOptions[Key] = Value;
+            end
+            FeatureOptions.searchIgnore = true;
+            return self:AttachControlFeatures(CheckData, FeatureOptions, ApiData, {SearchInput}, "Search Bar");
+        end
+
+        function Types:CreateSearchBar(Name, Options, Callback)
+            return self:SearchBar(Name, Options, Callback);
         end
         
         function Types:Toggle(Name, Options, Callback)
@@ -402,17 +1200,24 @@ local Defaults; do
             end
 
             self:Resize();
-            return {
+            local ApiData = {
                 Set = function(self, b)
                     SetToggleState(b, true);
                 end,
                 Get = function()
                     return Location[Flag];
                 end
-            }
+            };
+
+            return self:AttachControlFeatures(CheckData, Options, ApiData, {ToggleButton}, tostring(Name));
         end
         
-        function Types:Button(Name, Callback)
+        function Types:Button(Name, Options, Callback)
+            if type(Options) == "function" and Callback == nil then
+                Callback = Options;
+                Options = {};
+            end
+            Options = Options or {};
             Callback = Callback or function() end;
             
             local CheckData = Library:Create('Frame', {
@@ -435,14 +1240,17 @@ local Defaults; do
                 Parent = self.container;
             });
             
-            CheckData:FindFirstChild(Name).MouseButton1Click:Connect(Callback)
+            local ButtonObject = CheckData:FindFirstChild(Name);
+            ButtonObject.MouseButton1Click:Connect(Callback)
             self:Resize();
 
-            return {
+            local ApiData = {
                 Fire = function()
                     Callback();
                 end
-            }
+            };
+
+            return self:AttachControlFeatures(CheckData, Options, ApiData, {ButtonObject}, tostring(Name));
         end
         
         function Types:Box(Name, Options, Callback)
@@ -557,7 +1365,19 @@ local Defaults; do
             });
             
             self:Resize();
-            return BoxData
+            local ApiData = {
+                Object = BoxData;
+                TextBox = BoxData;
+                Get = function()
+                    return Location[Flag];
+                end,
+                Set = function(_, NewValue, FireCallback)
+                    SetBoxValue(NewValue, FireCallback ~= false, nil);
+                end,
+            };
+
+            local EnhancedApi = self:AttachControlFeatures(CheckData, Options, ApiData, {BoxData}, tostring(Name));
+            return WrapInstanceApi(BoxData, EnhancedApi)
         end
         
         function Types:Bind(Name, Options, Callback)
@@ -565,8 +1385,10 @@ local Defaults; do
             local Location     = Options.location or self.flags;
             local KeyboardOnly = Options.kbonly or false
             local Flag         = self:ResolveFlag(Options.flag, Name, "Bind");
+            local ModeFlag     = tostring(Options.modeflag or Options.modeFlag or (Flag .. "_Mode"));
             local Callback     = Callback or function() end;
             local Default      = Options.default;
+            local ModeOption   = Options.mode or Options.bindmode or Options.keybindmode or "press";
 
             local Banned = {
                 Return = true;
@@ -587,7 +1409,27 @@ local Defaults; do
             local Allowed = {
                 MouseButton1 = true;
                 MouseButton2 = true;
-            }      
+            }
+
+            local function NormalizeMode(Value)
+                local Mode = string.lower(tostring(Value or "press"));
+                if Mode == "toggle" then
+                    return "toggle";
+                end
+                if Mode == "hold" or Mode == "held" then
+                    return "hold";
+                end
+                if Mode == "always" then
+                    return "always";
+                end
+                return "press";
+            end
+
+            local CurrentMode = NormalizeMode(ModeOption);
+            local ToggleState = false;
+            local HoldState = false;
+            local AlwaysState = false;
+            Location[ModeFlag] = CurrentMode;
 
             local function GetEnumItemSafe(EnumType, Name)
                 if type(Name) ~= "string" or Name == "" then
@@ -878,11 +1720,6 @@ local Defaults; do
             end
             ButtonData.Text = GetInputName(Location[Flag]);
 
-	            Library.Binds[Flag] = {
-	                Location = Location;
-	                Callback = Callback;
-	            };
-
 	            self:Resize();
 
 	            local ApiData = {};
@@ -918,16 +1755,126 @@ local Defaults; do
 	                return Location[Flag];
 	            end
 
+                function ApiData:SetMode(NewMode, FireCallback)
+                    local OldMode = CurrentMode;
+                    local NextMode = NormalizeMode(NewMode);
+                    if OldMode == NextMode then
+                        return NextMode;
+                    end
+
+                    if OldMode == "hold" and HoldState then
+                        HoldState = false;
+                        if FireCallback ~= false then
+                            Callback(false, Location[Flag], "hold_end");
+                        end
+                    end
+                    if OldMode == "toggle" and ToggleState then
+                        ToggleState = false;
+                    end
+                    if OldMode == "always" and AlwaysState then
+                        AlwaysState = false;
+                        if FireCallback ~= false then
+                            Callback(false, Location[Flag], "always_end");
+                        end
+                    end
+
+                    CurrentMode = NextMode;
+                    Location[ModeFlag] = CurrentMode;
+                    if NextMode == "always" then
+                        AlwaysState = true;
+                        if FireCallback ~= false then
+                            Callback(true, Location[Flag], "always_start");
+                        end
+                    end
+
+                    return CurrentMode;
+                end
+
+                function ApiData:GetMode()
+                    return CurrentMode;
+                end
+
+                function ApiData:GetState()
+                    if CurrentMode == "toggle" then
+                        return ToggleState;
+                    end
+                    if CurrentMode == "hold" then
+                        return HoldState;
+                    end
+                    if CurrentMode == "always" then
+                        return AlwaysState;
+                    end
+                    return false;
+                end
+
+                function ApiData:SetState(NewState, FireCallback)
+                    local Desired = (NewState == true);
+                    if CurrentMode == "toggle" then
+                        ToggleState = Desired;
+                        if FireCallback ~= false then
+                            Callback(ToggleState, Location[Flag], "toggle_state");
+                        end
+                        return ToggleState;
+                    end
+                    if CurrentMode == "hold" then
+                        HoldState = Desired;
+                        if FireCallback ~= false then
+                            Callback(HoldState, Location[Flag], (HoldState and "hold_start" or "hold_end"));
+                        end
+                        return HoldState;
+                    end
+                    if CurrentMode == "always" then
+                        AlwaysState = Desired;
+                        if FireCallback ~= false then
+                            Callback(AlwaysState, Location[Flag], (AlwaysState and "always_start" or "always_end"));
+                        end
+                        return AlwaysState;
+                    end
+                    return false;
+                end
+
                 Library:RegisterFlagController(Location, Flag, {
                     Set = function(NewBinding, FireCallback)
                         ApiData:Set(NewBinding, FireCallback == true);
                     end
                 });
+                Library:RegisterFlagController(Location, ModeFlag, {
+                    Set = function(NewMode, FireCallback)
+                        ApiData:SetMode(NewMode, FireCallback ~= false);
+                    end
+                });
 
-	            return ApiData;
+	            local BindEntry = {
+	                Location = Location;
+	                Callback = Callback;
+                    GetMode = function()
+                        return CurrentMode;
+                    end;
+                    SetMode = function(_, NewMode)
+                        return ApiData:SetMode(NewMode, false);
+                    end;
+                    GetBinding = function()
+                        return Location[Flag];
+                    end;
+                    GetState = function()
+                        return ApiData:GetState();
+                    end;
+                    SetState = function(_, NewState, FireCallback)
+                        return ApiData:SetState(NewState, FireCallback ~= false);
+                    end;
+	            };
+                Library.Binds[Flag] = BindEntry;
+
+                if CurrentMode == "always" then
+                    AlwaysState = true;
+                    Callback(true, Location[Flag], "always_start");
+                end
+
+	            return self:AttachControlFeatures(CheckData, Options, ApiData, {ButtonData}, tostring(Name));
 	        end
     
-        function Types:Section(Name)
+        function Types:Section(Name, Options)
+            Options = Options or {};
             local OrderData = self:GetOrder();
             local DeterminedSize = UDim2.new(1, 0, 0, 25)
             local DeterminedPos = UDim2.new(0, 0, 0, 4);
@@ -964,6 +1911,9 @@ local Defaults; do
             });
         
             self:Resize();
+            local ApiData = {};
+            self:AttachControlFeatures(CheckData, Options, ApiData, {}, tostring(Name));
+            return ApiData;
         end
 
         function Types:Label(Name, Options)
@@ -1004,7 +1954,7 @@ local Defaults; do
             local LabelObject = CheckData:FindFirstChild("LabelText");
             self:Resize();
 
-            return {
+            local ApiData = {
                 Refresh = function(_, NewText)
                     LabelObject.Text = tostring(NewText);
                 end,
@@ -1019,6 +1969,8 @@ local Defaults; do
                     end
                 end
             };
+
+            return self:AttachControlFeatures(CheckData, Options, ApiData, {LabelObject}, tostring(TextValue));
         end
 
         function Types:ColorPicker(Name, Options, Callback)
@@ -1837,7 +2789,7 @@ local Defaults; do
             end
 
             self:Resize();
-            return {
+            local ApiData = {
                 Set = function(_, NewColor, FireCallback)
                     ApplyColor(NewColor, FireCallback ~= false, CurrentTransparency);
                 end,
@@ -1863,6 +2815,8 @@ local Defaults; do
                     return CurrentTransparency;
                 end
             };
+
+            return self:AttachControlFeatures(CheckData, Options, ApiData, {Preview, HexInput, RgbInput, PopupCloseButton}, tostring(Name));
         end
 
         function Types:Slider(Name, Options, Callback)
@@ -2048,14 +3002,16 @@ local Defaults; do
             });
 
             self:Resize();
-            return {
+            local ApiData = {
                 Set = function(self, Value)
                     SetValue(Value, true);
                 end,
                 Get = function()
                     return Location[Flag];
                 end
-            }
+            };
+
+            return self:AttachControlFeatures(CheckData, Options, ApiData, {SliderContainer, Knob}, tostring(Name));
         end 
 
         function Types:SearchBox(Text, Options, Callback)
@@ -2196,7 +3152,21 @@ local Defaults; do
             });
 
             self:Resize();
-            return Reload, InputBox;
+            local ApiData = {
+                Refresh = Reload;
+                Reload = Reload;
+                Input = InputBox;
+                Box = InputBox;
+                Set = function(_, NewValue, FireCallback)
+                    SetSearchValue(NewValue, FireCallback ~= false);
+                end,
+                Get = function()
+                    return Location[Flag];
+                end,
+            };
+
+            self:AttachControlFeatures(BoxData, Options, ApiData, {InputBox}, tostring(Text));
+            return Reload, InputBox, ApiData;
         end
         
         function Types:Dropdown(Name, Options, Callback)
@@ -2314,17 +3284,13 @@ local Defaults; do
                 SelectionLabel.TextColor3 = Color3.fromRGB(60, 60, 60);
                 SelectionLabel.Text = Name;
 
-                local TotalHeight = #ListData * 20;
-                local Size = UDim2.new(1, 0, 0, TotalHeight);
+                local RowHeight = 20;
+                local TotalItems = #ListData;
+                local TotalHeight = TotalItems * RowHeight;
+                local ViewHeight = math.min(TotalHeight, 100);
+                local GoSize = UDim2.new(1, 0, 0, ViewHeight);
+                local ScrollSize = (TotalHeight > ViewHeight and 5 or 0);
 
-                local ClampedSize;
-                local ScrollSize = 0;
-                if Size.Y.Offset > 100 then
-                    ClampedSize = UDim2.new(1, 0, 0, 100)
-                    ScrollSize = 5;
-                end
-                
-                local GoSize = (ClampedSize ~= nil and ClampedSize) or Size;    
                 local ContainerData = Library:Create('ScrollingFrame', {
                     TopImage = 'rbxasset://textures/ui/Scroll/scroll-middle.png';
                     BottomImage = 'rbxasset://textures/ui/Scroll/scroll-middle.png';
@@ -2335,39 +3301,64 @@ local Defaults; do
                     BorderColor3 = Library.Options.bordercolor;
                     Position = UDim2.new(0, 0, 1, 0);
                     ScrollBarThickness = ScrollSize;
-                    CanvasSize = UDim2.new(0, 0, 0, Size.Y.Offset);
+                    CanvasSize = UDim2.new(0, 0, 0, TotalHeight);
                     ZIndex = 5;
                     ClipsDescendants = true;
-                    Library:Create('UIListLayout', {
-                        Name = 'List';
-                        SortOrder = Enum.SortOrder.LayoutOrder
-                    })
                 });
                 ActiveContainer = ContainerData;
 
-                for Index, ValueData in next, ListData do
-                    local OptionText = tostring(ValueData);
-                    local Btn = Library:Create('TextButton', {
-                        Size = UDim2.new(1, 0, 0, 20);
+                local PoolSize = math.clamp(math.ceil((ViewHeight / RowHeight)) + 2, 4, 24);
+                local Rows = {};
+                local function RenderRows()
+                    local StartIndex = math.floor(ContainerData.CanvasPosition.Y / RowHeight) + 1;
+                    for PoolIndex = 1, PoolSize do
+                        local ItemIndex = StartIndex + PoolIndex - 1;
+                        local Row = Rows[PoolIndex];
+                        local ItemValue = ListData[ItemIndex];
+                        if ItemValue ~= nil then
+                            Row.Visible = true;
+                            Row.Position = UDim2.new(0, 0, 0, (ItemIndex - 1) * RowHeight);
+                            Row.Text = tostring(ItemValue);
+                            Row:SetAttribute("WallyItemIndex", ItemIndex);
+                        else
+                            Row.Visible = false;
+                            Row.Text = "";
+                            Row:SetAttribute("WallyItemIndex", nil);
+                        end
+                    end
+                end
+
+                for PoolIndex = 1, PoolSize do
+                    local Row = Library:Create('TextButton', {
+                        Size = UDim2.new(1, 0, 0, RowHeight);
+                        Position = UDim2.new(0, 0, 0, 0);
                         BackgroundColor3 = Library.Options.btncolor;
                         BorderColor3 = Library.Options.bordercolor;
-                        Text = OptionText;
+                        Text = "";
                         Font = Library.Options.font;
                         TextSize = Library.Options.fontsize;
-                        LayoutOrder = Index;
                         Parent = ContainerData;
                         ZIndex = 5;
                         TextColor3 = Library.Options.textcolor;
                         TextStrokeTransparency = Library.Options.textstroke;
                         TextStrokeColor3 = Library.Options.strokecolor;
-                    })
-                    
-                    Btn.MouseButton1Click:Connect(function()
-                        SetDropdownValue(Btn.Text, true);
-                        CloseDropdown(true);
-                    end)
+                        TextXAlignment = Enum.TextXAlignment.Center;
+                        AutoButtonColor = true;
+                    });
+
+                    Row.MouseButton1Click:Connect(function()
+                        local ItemIndex = tonumber(Row:GetAttribute("WallyItemIndex"));
+                        if ItemIndex and ListData[ItemIndex] ~= nil then
+                            SetDropdownValue(ListData[ItemIndex], true);
+                            CloseDropdown(true);
+                        end
+                    end);
+
+                    Rows[PoolIndex] = Row;
                 end
-                
+
+                ContainerData:GetPropertyChangedSignal("CanvasPosition"):Connect(RenderRows);
+                RenderRows();
                 ContainerData:TweenSize(GoSize, 'Out', 'Quint', .3, true)
 
                 Input = UserInputService.InputBegan:Connect(function(InputObject)
@@ -2392,7 +3383,7 @@ local Defaults; do
                 end
             });
 
-            return {
+            local ApiData = {
                 Refresh = Reload;
                 Get = function()
                     return Location[Flag];
@@ -2400,7 +3391,9 @@ local Defaults; do
                 Set = function(_, Value, FireCallback)
                     SetDropdownValue(Value, FireCallback ~= false);
                 end
-            }
+            };
+
+            return self:AttachControlFeatures(CheckData, Options, ApiData, {ButtonData}, tostring(Name));
         end
 
         function Types:MultiSelectList(Name, Options, Callback)
@@ -2606,10 +3599,6 @@ local Defaults; do
                     CanvasSize = UDim2.new(0, 0, 0, 0);
                     TopImage = 'rbxasset://textures/ui/Scroll/scroll-middle.png';
                     BottomImage = 'rbxasset://textures/ui/Scroll/scroll-middle.png';
-                    Library:Create('UIListLayout', {
-                        Name = 'ListLayout';
-                        SortOrder = Enum.SortOrder.LayoutOrder;
-                    })
                 });
                 Library:Create('TextLabel', {
                     Name = 'Info';
@@ -2629,14 +3618,15 @@ local Defaults; do
 
             local SearchBox = CheckData:FindFirstChild('SearchBox');
             local ContainerData = CheckData:FindFirstChild('ListContainer');
-            local ListLayout = ContainerData:FindFirstChild('ListLayout');
             local InfoLabel = CheckData:FindFirstChild('Info');
             local SelectAllButton = CheckData:FindFirstChild('SelectAll');
             local ClearButton = CheckData:FindFirstChild('ClearAll');
-
-            ListLayout:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-                ContainerData.CanvasSize = UDim2.new(0, 0, 0, ListLayout.AbsoluteContentSize.Y + 2);
-            end);
+            local RowPool = {};
+            local FilteredItems = {};
+            local EmptyLabel;
+            local HintLabel;
+            local PoolSize = math.clamp(math.ceil(ListHeight / RowHeight) + 3, 6, 42);
+            local Render;
 
             local function GetSelectedCount()
                 local Total = 0;
@@ -2694,10 +3684,68 @@ local Defaults; do
                 return string.find(Source, QueryData, 1, true) ~= nil;
             end
 
-            local function ClearListRows()
-                for _, Child in next, ContainerData:GetChildren() do
-                    if (not Child:IsA('UIListLayout')) then
-                        Child:Destroy();
+            local function EnsureVirtualRows()
+                if #RowPool > 0 then
+                    return;
+                end
+
+                for PoolIndex = 1, PoolSize do
+                    local Row = Library:Create('TextButton', {
+                        Name = 'VirtualRow_' .. tostring(PoolIndex);
+                        Text = '';
+                        TextXAlignment = Enum.TextXAlignment.Left;
+                        Font = Library.Options.font;
+                        TextSize = Library.Options.fontsize;
+                        TextColor3 = Library.Options.textcolor;
+                        TextStrokeTransparency = Library.Options.textstroke;
+                        TextStrokeColor3 = Library.Options.strokecolor;
+                        BorderColor3 = Library.Options.bordercolor;
+                        BackgroundColor3 = Library.Options.btncolor;
+                        AutoButtonColor = false;
+                        Size = UDim2.new(1, -4, 0, RowHeight);
+                        Position = UDim2.new(0, 2, 0, 0);
+                        Parent = ContainerData;
+                    });
+
+                    Row.MouseButton1Click:Connect(function()
+                        local ItemIndex = tonumber(Row:GetAttribute("WallyItemIndex"));
+                        local Item = (ItemIndex and FilteredItems[ItemIndex]) or nil;
+                        if Item then
+                            if SelectedData[Item] then
+                                SelectedData[Item] = nil;
+                            else
+                                SelectedData[Item] = true;
+                            end
+                            UpdateSelection();
+                            if type(Render) == "function" then
+                                Render();
+                            end
+                        end
+                    end);
+
+                    RowPool[#RowPool + 1] = Row;
+                end
+            end
+
+            local function UpdateVirtualRows()
+                EnsureVirtualRows();
+
+                local StartIndex = math.floor(ContainerData.CanvasPosition.Y / RowHeight) + 1;
+                for PoolIndex = 1, #RowPool do
+                    local ItemIndex = StartIndex + PoolIndex - 1;
+                    local Row = RowPool[PoolIndex];
+                    local Item = FilteredItems[ItemIndex];
+                    if Item then
+                        local Enabled = SelectedData[Item] == true;
+                        Row.Visible = true;
+                        Row.Position = UDim2.new(0, 2, 0, (ItemIndex - 1) * RowHeight);
+                        Row.Text = (Enabled and "[x] " or "[ ] ") .. Item;
+                        Row.BackgroundColor3 = (Enabled and Color3.fromRGB(40, 95, 40) or Library.Options.btncolor);
+                        Row:SetAttribute("WallyItemIndex", ItemIndex);
+                    else
+                        Row.Visible = false;
+                        Row.Text = '';
+                        Row:SetAttribute("WallyItemIndex", nil);
                     end
                 end
             end
@@ -2709,92 +3757,83 @@ local Defaults; do
                 return Normalize(SearchBox.Text);
             end
 
-            local function Render()
-                ClearListRows();
-
+            Render = function()
                 local QueryData = ReadQuery();
                 local Matched = 0;
-                local ShownData = 0;
+                FilteredItems = {};
 
                 for _, Item in next, ListData do
                     if IsMatch(Item, QueryData) then
                         Matched = Matched + 1;
-
-                        if ShownData < MaxRows then
-                            ShownData = ShownData + 1;
-                            local Enabled = SelectedData[Item] == true;
-                            local Row = Library:Create('TextButton', {
-                                Name = 'Option_' .. tostring(ShownData);
-                                Text = (Enabled and "[x] " or "[ ] ") .. Item;
-                                TextXAlignment = Enum.TextXAlignment.Left;
-                                Font = Library.Options.font;
-                                TextSize = Library.Options.fontsize;
-                                TextColor3 = Library.Options.textcolor;
-                                TextStrokeTransparency = Library.Options.textstroke;
-                                TextStrokeColor3 = Library.Options.strokecolor;
-                                BorderColor3 = Library.Options.bordercolor;
-                                BackgroundColor3 = (Enabled and Color3.fromRGB(40, 95, 40) or Library.Options.btncolor);
-                                AutoButtonColor = false;
-                                Size = UDim2.new(1, -4, 0, RowHeight);
-                                Position = UDim2.new(0, 2, 0, 0);
-                                LayoutOrder = ShownData;
-                                Parent = ContainerData;
-                            });
-
-                            Row.MouseButton1Click:Connect(function()
-                                if SelectedData[Item] then
-                                    SelectedData[Item] = nil;
-                                else
-                                    SelectedData[Item] = true;
-                                end
-
-                                UpdateSelection();
-                                Render();
-                            end);
+                        if #FilteredItems < MaxRows then
+                            table.insert(FilteredItems, Item);
                         end
                     end
                 end
 
+                local CanvasRows = math.min(Matched, MaxRows);
+                ContainerData.CanvasSize = UDim2.new(0, 0, 0, CanvasRows * RowHeight);
+                ContainerData.ScrollBarThickness = (CanvasRows * RowHeight > ListHeight and 5 or 0);
+                local MaxCanvasY = math.max((CanvasRows * RowHeight) - ListHeight, 0);
+                local CurrentCanvasY = math.clamp(ContainerData.CanvasPosition.Y, 0, MaxCanvasY);
+                ContainerData.CanvasPosition = Vector2.new(0, CurrentCanvasY);
+
                 if Matched == 0 then
-                    Library:Create('TextLabel', {
-                        Name = 'NoMatches';
-                        Text = 'No matches';
-                        Font = Library.Options.font;
-                        TextSize = Library.Options.fontsize;
-                        TextColor3 = Library.Options.textcolor;
-                        TextStrokeTransparency = Library.Options.textstroke;
-                        TextStrokeColor3 = Library.Options.strokecolor;
-                        BackgroundTransparency = 1;
-                        Size = UDim2.new(1, -4, 0, RowHeight);
-                        Position = UDim2.new(0, 2, 0, 0);
-                        TextXAlignment = Enum.TextXAlignment.Left;
-                        LayoutOrder = 1;
-                        Parent = ContainerData;
-                    });
-                elseif Matched > MaxRows then
-                    Library:Create('TextLabel', {
-                        Name = 'RefineHint';
-                        Text = ('Refine search (%d matches, showing %d)'):format(Matched, MaxRows);
-                        Font = Library.Options.font;
-                        TextSize = math.max(Library.Options.fontsize - 2, 12);
-                        TextColor3 = Color3.fromRGB(180, 180, 180);
-                        TextStrokeTransparency = Library.Options.textstroke;
-                        TextStrokeColor3 = Library.Options.strokecolor;
-                        BackgroundTransparency = 1;
-                        Size = UDim2.new(1, -4, 0, 18);
-                        Position = UDim2.new(0, 2, 0, 0);
-                        TextXAlignment = Enum.TextXAlignment.Left;
-                        LayoutOrder = ShownData + 1;
-                        Parent = ContainerData;
-                    });
+                    if not EmptyLabel or (not EmptyLabel.Parent) then
+                        EmptyLabel = Library:Create('TextLabel', {
+                            Name = 'NoMatches';
+                            Text = 'No matches';
+                            Font = Library.Options.font;
+                            TextSize = Library.Options.fontsize;
+                            TextColor3 = Library.Options.textcolor;
+                            TextStrokeTransparency = Library.Options.textstroke;
+                            TextStrokeColor3 = Library.Options.strokecolor;
+                            BackgroundTransparency = 1;
+                            Size = UDim2.new(1, -4, 0, RowHeight);
+                            Position = UDim2.new(0, 2, 0, 0);
+                            TextXAlignment = Enum.TextXAlignment.Left;
+                            Parent = ContainerData;
+                        });
+                    end
+                    EmptyLabel.Visible = true;
+                    EmptyLabel.Text = "No matches";
+                elseif EmptyLabel and EmptyLabel.Parent then
+                    EmptyLabel.Visible = false;
+                end
+
+                if Matched > MaxRows then
+                    if not HintLabel or (not HintLabel.Parent) then
+                        HintLabel = Library:Create('TextLabel', {
+                            Name = 'RefineHint';
+                            Text = '';
+                            Font = Library.Options.font;
+                            TextSize = math.max(Library.Options.fontsize - 2, 12);
+                            TextColor3 = Color3.fromRGB(180, 180, 180);
+                            TextStrokeTransparency = Library.Options.textstroke;
+                            TextStrokeColor3 = Library.Options.strokecolor;
+                            BackgroundTransparency = 1;
+                            Size = UDim2.new(1, -4, 0, 18);
+                            Position = UDim2.new(0, 2, 0, 0);
+                            TextXAlignment = Enum.TextXAlignment.Left;
+                            Parent = ContainerData;
+                        });
+                    end
+                    HintLabel.Visible = true;
+                    HintLabel.Text = ('Refine search (%d matches, virtualized to %d)'):format(Matched, MaxRows);
+                    HintLabel.Position = UDim2.new(0, 2, 0, math.max(0, (CanvasRows * RowHeight) - 18));
+                elseif HintLabel and HintLabel.Parent then
+                    HintLabel.Visible = false;
                 end
 
                 local Text = string.format("%d selected | %d matches", GetSelectedCount(), Matched);
-                if Matched > ShownData then
-                    Text = Text .. string.format(" (showing %d)", ShownData);
+                if Matched > MaxRows then
+                    Text = Text .. string.format(" (virtualized %d)", MaxRows);
                 end
                 InfoLabel.Text = Text;
+
+                UpdateVirtualRows();
             end
+            ContainerData:GetPropertyChangedSignal("CanvasPosition"):Connect(UpdateVirtualRows);
 
             SelectAllButton.MouseButton1Click:Connect(function()
                 local QueryData = ReadQuery();
@@ -2942,7 +3981,7 @@ local Defaults; do
                 end
             });
 
-            return ApiData;
+            return self:AttachControlFeatures(CheckData, Options, ApiData, {SearchBox, SelectAllButton, ClearButton}, tostring(Name));
         end
     end
     
@@ -2993,6 +4032,170 @@ local Defaults; do
         
         Obj.Parent = Data.Parent;
         return Obj
+    end
+
+    function Library:EnsureTooltipGui()
+        if self.TooltipGui and self.TooltipGui.Parent and self.TooltipFrame and self.TooltipFrame.Parent then
+            return self.TooltipFrame;
+        end
+
+        local ParentGui = ResolveGuiParent();
+        self.TooltipGui = self:Create("ScreenGui", {
+            Name = "WallyModifiedTooltips";
+            ResetOnSpawn = false;
+            IgnoreGuiInset = true;
+            ZIndexBehavior = Enum.ZIndexBehavior.Sibling;
+            DisplayOrder = 1001;
+            Parent = ParentGui;
+        });
+
+        local TooltipFrame = self:Create("Frame", {
+            Name = "Tooltip";
+            Visible = false;
+            BackgroundColor3 = Color3.fromRGB(22, 22, 22);
+            BorderColor3 = Color3.fromRGB(70, 70, 70);
+            Size = UDim2.new(0, 140, 0, 18);
+            Position = UDim2.new(0, 0, 0, 0);
+            ZIndex = 200;
+            Parent = self.TooltipGui;
+            Library:Create("TextLabel", {
+                Name = "Text";
+                BackgroundTransparency = 1;
+                Position = UDim2.new(0, 6, 0, 2);
+                Size = UDim2.new(1, -12, 1, -4);
+                Text = "";
+                TextWrapped = true;
+                TextXAlignment = Enum.TextXAlignment.Left;
+                TextYAlignment = Enum.TextYAlignment.Top;
+                Font = (self.Options and self.Options.font) or Enum.Font.SourceSans;
+                TextSize = math.max(10, tonumber(self.Options and self.Options.fontsize) or 16);
+                TextColor3 = (self.Options and self.Options.textcolor) or Color3.fromRGB(255, 255, 255);
+                TextStrokeTransparency = (self.Options and self.Options.textstroke) or 1;
+                TextStrokeColor3 = (self.Options and self.Options.strokecolor) or Color3.fromRGB(0, 0, 0);
+                ZIndex = 201;
+            });
+        });
+
+        self.TooltipFrame = TooltipFrame;
+        self.TooltipTextLabel = TooltipFrame:FindFirstChild("Text");
+        self.TooltipBindings = self.TooltipBindings or {};
+        return TooltipFrame;
+    end
+
+    function Library:HideTooltip()
+        if self.TooltipFrame and self.TooltipFrame.Parent then
+            self.TooltipFrame.Visible = false;
+        end
+        self.ActiveTooltipSource = nil;
+        self.ActiveTooltipTextResolver = nil;
+    end
+
+    function Library:ShowTooltip(Source, TextResolver)
+        local TooltipFrame = self:EnsureTooltipGui();
+        if not TooltipFrame then
+            return;
+        end
+
+        self.ActiveTooltipSource = Source;
+        self.ActiveTooltipTextResolver = TextResolver;
+
+        local Text = "";
+        if type(TextResolver) == "function" then
+            local Ok, Result = pcall(TextResolver);
+            if Ok and Result ~= nil then
+                Text = tostring(Result);
+            end
+        elseif TextResolver ~= nil then
+            Text = tostring(TextResolver);
+        end
+
+        if Text == "" then
+            self:HideTooltip();
+            return;
+        end
+
+        local FontData = (self.Options and self.Options.font) or Enum.Font.SourceSans;
+        local TextSize = math.max(10, tonumber(self.Options and self.Options.fontsize) or 16);
+        local OkBounds, Bounds = pcall(function()
+            return TextService:GetTextSize(Text, TextSize, FontData, Vector2.new(340, 240));
+        end);
+        if not OkBounds or typeof(Bounds) ~= "Vector2" then
+            Bounds = Vector2.new(120, 14);
+        end
+
+        if self.TooltipTextLabel then
+            self.TooltipTextLabel.Font = FontData;
+            self.TooltipTextLabel.TextSize = TextSize;
+            self.TooltipTextLabel.Text = Text;
+        end
+
+        TooltipFrame.Size = UDim2.new(0, math.clamp(math.floor(Bounds.X + 14), 70, 360), 0, math.clamp(math.floor(Bounds.Y + 8), 18, 280));
+        TooltipFrame.Visible = true;
+
+        local MousePos = UserInputService:GetMouseLocation();
+        TooltipFrame.Position = UDim2.new(0, MousePos.X + 14, 0, MousePos.Y + 12);
+    end
+
+    function Library:AttachTooltip(Target, TextOrResolver)
+        if typeof(Target) ~= "Instance" or (not Target:IsA("GuiObject")) then
+            return nil;
+        end
+
+        self:EnsureTooltipGui();
+        self.TooltipBindings = self.TooltipBindings or {};
+
+        local Existing = self.TooltipBindings[Target];
+        if type(Existing) == "table" then
+            for _, Connection in next, Existing do
+                if Connection and Connection.Disconnect then
+                    Connection:Disconnect();
+                end
+            end
+        end
+
+        local function ResolveText()
+            if type(TextOrResolver) == "function" then
+                return TextOrResolver();
+            end
+            return TextOrResolver;
+        end
+
+        local Connections = {};
+        Connections[#Connections + 1] = Target.MouseEnter:Connect(function()
+            self:ShowTooltip(Target, ResolveText);
+        end);
+        Connections[#Connections + 1] = Target.MouseMoved:Connect(function()
+            if self.ActiveTooltipSource == Target and self.TooltipFrame and self.TooltipFrame.Parent then
+                local MousePos = UserInputService:GetMouseLocation();
+                self.TooltipFrame.Position = UDim2.new(0, MousePos.X + 14, 0, MousePos.Y + 12);
+            end
+        end);
+        Connections[#Connections + 1] = Target.MouseLeave:Connect(function()
+            if self.ActiveTooltipSource == Target then
+                self:HideTooltip();
+            end
+        end);
+        Connections[#Connections + 1] = Target.AncestryChanged:Connect(function(_, ParentData)
+            if not ParentData then
+                if self.ActiveTooltipSource == Target then
+                    self:HideTooltip();
+                end
+                local Entry = self.TooltipBindings and self.TooltipBindings[Target];
+                if type(Entry) == "table" then
+                    for _, Connection in next, Entry do
+                        if Connection and Connection.Disconnect then
+                            Connection:Disconnect();
+                        end
+                    end
+                end
+                if self.TooltipBindings then
+                    self.TooltipBindings[Target] = nil;
+                end
+            end
+        end);
+
+        self.TooltipBindings[Target] = Connections;
+        return true;
     end
 
     function Library:EnsureNotificationContainer()
@@ -3088,11 +4291,31 @@ local Defaults; do
         local TitleSize = math.clamp(math.floor((tonumber(Config.titleSize or (self.Options and self.Options.fontsize) or 17) or 17) + 0.5), 10, 40);
         local BodySize = math.clamp(math.floor((tonumber(Config.textSize or (TitleSize - 1)) or (TitleSize - 1)) + 0.5), 9, 36);
 
+        local Level = string.lower(tostring(Config.level or Config.kind or Config.type or "info"));
+        local LevelAccent = {
+            info = Color3.fromRGB(90, 170, 255);
+            success = Color3.fromRGB(80, 210, 120);
+            warn = Color3.fromRGB(255, 190, 90);
+            warning = Color3.fromRGB(255, 190, 90);
+            error = Color3.fromRGB(255, 110, 110);
+        };
+        local LevelTitle = {
+            info = "Info";
+            success = "Success";
+            warn = "Warning";
+            warning = "Warning";
+            error = "Error";
+        };
+
         local NotifyBackground = Config.backgroundColor or Config.bgColor or (self.Options and self.Options.notifybgcolor) or Color3.fromRGB(28, 28, 28);
         local NotifyBorder = Config.borderColor or (self.Options and self.Options.notifybordercolor) or Color3.fromRGB(62, 62, 62);
-        local NotifyAccent = Config.accentColor or (self.Options and self.Options.notifyaccentcolor) or (self.Options and self.Options.underlinecolor) or Color3.fromRGB(0, 255, 140);
+        local NotifyAccent = Config.accentColor or Config.levelColor or LevelAccent[Level] or (self.Options and self.Options.notifyaccentcolor) or (self.Options and self.Options.underlinecolor) or Color3.fromRGB(0, 255, 140);
         local NotifyTitleColor = Config.titleColor or (self.Options and self.Options.notifytitlecolor) or (self.Options and self.Options.titletextcolor) or Color3.fromRGB(255, 255, 255);
         local NotifyTextColor = Config.textColor or (self.Options and self.Options.notifytextcolor) or (self.Options and self.Options.textcolor) or Color3.fromRGB(230, 230, 230);
+
+        if Config.title == nil and Config.text ~= nil and LevelTitle[Level] then
+            TitleText = LevelTitle[Level];
+        end
 
         if NotifyAccent == "rainbow" then
             NotifyAccent = Color3.fromHSV((os.clock() * 0.15) % 1, 1, 1);
@@ -3258,6 +4481,94 @@ local Defaults; do
 
     function Library:Notification(...)
         return self:Notify(...);
+    end
+
+    function Library:NotifyInfo(Title, Text, Duration, Options)
+        local Config = Options or {};
+        if type(Title) == "table" then
+            Config = Title;
+        else
+            Config.title = Title;
+            Config.text = Text;
+            Config.duration = Duration;
+        end
+        Config.level = "info";
+        return self:Notify(Config);
+    end
+
+    function Library:NotifySuccess(Title, Text, Duration, Options)
+        local Config = Options or {};
+        if type(Title) == "table" then
+            Config = Title;
+        else
+            Config.title = Title;
+            Config.text = Text;
+            Config.duration = Duration;
+        end
+        Config.level = "success";
+        return self:Notify(Config);
+    end
+
+    function Library:NotifyWarn(Title, Text, Duration, Options)
+        local Config = Options or {};
+        if type(Title) == "table" then
+            Config = Title;
+        else
+            Config.title = Title;
+            Config.text = Text;
+            Config.duration = Duration;
+        end
+        Config.level = "warn";
+        return self:Notify(Config);
+    end
+
+    function Library:NotifyError(Title, Text, Duration, Options)
+        local Config = Options or {};
+        if type(Title) == "table" then
+            Config = Title;
+        else
+            Config.title = Title;
+            Config.text = Text;
+            Config.duration = Duration;
+        end
+        Config.level = "error";
+        return self:Notify(Config);
+    end
+
+    function Library:GetControlApiByFlag(FlagName)
+        local Name = tostring(FlagName or "");
+        if Name == "" then
+            return nil;
+        end
+        local TableData = self.ControlApisByFlag or {};
+        return TableData[Name];
+    end
+
+    function Library:GetControlApiByObject(Object)
+        if typeof(Object) ~= "Instance" then
+            return nil;
+        end
+        local TableData = self.ControlApisByRoot or {};
+        return TableData[Object];
+    end
+
+    function Library:RefreshDependencies()
+        local Entries = self.DependencyControls or {};
+        local Refreshed = 0;
+        for Index = #Entries, 1, -1 do
+            local Entry = Entries[Index];
+            local RootObject = Entry and Entry.Root;
+            local Refresh = Entry and Entry.Refresh;
+            if (not RootObject) or (not RootObject.Parent) or type(Refresh) ~= "function" then
+                table.remove(Entries, Index);
+            else
+                local Ok = pcall(Refresh);
+                if Ok then
+                    Refreshed = Refreshed + 1;
+                end
+            end
+        end
+        return Refreshed;
     end
 
     function Library:RegisterFlagLocation(Location)
@@ -3473,6 +4784,8 @@ local Defaults; do
         local Extension = tostring(Options.extension or ".json");
         local ClearOnLoad = (Options.clearOnLoad ~= false);
         local SeparateByPlace = (Options.separateByPlace ~= false);
+        local SchemaVersion = math.max(1, math.floor((tonumber(Options.schemaVersion or Options.version) or 1) + 0.5));
+        local Migrations = (type(Options.migrations) == "table" and Options.migrations) or {};
 
         if Extension ~= "" and string.sub(Extension, 1, 1) ~= "." then
             Extension = "." .. Extension;
@@ -3733,6 +5046,37 @@ local Defaults; do
             return Output;
         end
 
+        local function ResolveMigrator(Version)
+            if type(Migrations) ~= "table" then
+                return nil;
+            end
+            return Migrations[Version] or Migrations[tostring(Version)] or Migrations["v" .. tostring(Version)];
+        end
+
+        local function ApplyMigrations(Data, FromVersion)
+            local CurrentVersion = math.max(1, math.floor((tonumber(FromVersion) or 1) + 0.5));
+            local Working = Data;
+            if type(Working) ~= "table" then
+                Working = {};
+            end
+
+            while CurrentVersion < SchemaVersion do
+                local Migrator = ResolveMigrator(CurrentVersion);
+                if type(Migrator) == "function" then
+                    local OkMigrate, NextData = pcall(Migrator, Working, CurrentVersion, CurrentVersion + 1);
+                    if not OkMigrate then
+                        return false, "migration failed at v" .. tostring(CurrentVersion) .. ": " .. tostring(NextData);
+                    end
+                    if type(NextData) == "table" then
+                        Working = NextData;
+                    end
+                end
+                CurrentVersion = CurrentVersion + 1;
+            end
+
+            return true, Working, CurrentVersion;
+        end
+
         local function ClearTable(TableData)
             for Key in next, TableData do
                 TableData[Key] = nil;
@@ -3777,12 +5121,29 @@ local Defaults; do
                 return false, "failed to decode preset json";
             end
 
-            local Data = DeserializeValue(Decoded);
+            local StoredVersion = 1;
+            local RawData = Decoded;
+            if type(Decoded) == "table" and Decoded.__wallyPreset == true then
+                StoredVersion = math.max(1, math.floor((tonumber(Decoded.schemaVersion) or 1) + 0.5));
+                RawData = Decoded.data;
+            end
+
+            local Data = DeserializeValue(RawData);
             if type(Data) ~= "table" then
                 return false, "preset data is invalid";
             end
 
-            return true, Data;
+            local OkMigrate, MigratedData, FinalVersion = ApplyMigrations(Data, StoredVersion);
+            if not OkMigrate then
+                return false, MigratedData;
+            end
+
+            return true, MigratedData, {
+                storedVersion = StoredVersion;
+                schemaVersion = FinalVersion;
+                migrated = (FinalVersion ~= StoredVersion);
+                path = Path;
+            };
         end
 
         local Manager = {};
@@ -3805,6 +5166,28 @@ local Defaults; do
 
         function Manager:GetExtension()
             return Extension;
+        end
+
+        function Manager:GetSchemaVersion()
+            return SchemaVersion;
+        end
+
+        function Manager:SetSchemaVersion(NewVersion)
+            local VersionValue = math.max(1, math.floor((tonumber(NewVersion) or SchemaVersion) + 0.5));
+            SchemaVersion = VersionValue;
+            return SchemaVersion;
+        end
+
+        function Manager:GetMigrations()
+            return Migrations;
+        end
+
+        function Manager:SetMigrations(NewMigrations)
+            if type(NewMigrations) ~= "table" then
+                return false, "migrations must be a table";
+            end
+            Migrations = NewMigrations;
+            return true;
         end
 
         function Manager:GetLocation()
@@ -3863,7 +5246,13 @@ local Defaults; do
             local Path, SafeName = GetPresetPath(PresetName);
             local Encoded;
             local OkEncode, EncodeError = pcall(function()
-                Encoded = HttpService:JSONEncode(SerializeValue(Source));
+                Encoded = HttpService:JSONEncode({
+                    __wallyPreset = true;
+                    schemaVersion = SchemaVersion;
+                    savedAt = os.time();
+                    build = tostring(Library.Build or "");
+                    data = SerializeValue(Source);
+                });
             end);
             if not OkEncode then
                 return false, "failed to encode preset: " .. tostring(EncodeError);
@@ -3877,8 +5266,108 @@ local Defaults; do
             return true, SafeName;
         end
 
+        function Manager:Export(PresetName)
+            local OkFolder, FolderError = EnsureFolderTree();
+            if not OkFolder then
+                return false, FolderError;
+            end
+
+            local Path = GetPresetPath(PresetName);
+            local OkFile, Exists = pcall(FileApi.IsFile, Path);
+            if (not OkFile) or (not Exists) then
+                return false, "preset file not found";
+            end
+
+            local OkRead, Content = pcall(FileApi.ReadFile, Path);
+            if not OkRead then
+                return false, "failed to read preset file";
+            end
+
+            return true, tostring(Content);
+        end
+
+        function Manager:ExportCurrent(SourceLocation)
+            local Source = nil;
+            if type(SourceLocation) == "table" then
+                Source = SourceLocation;
+            elseif UseScriptScope then
+                Source = Library:CollectScriptPresetData();
+            else
+                Source = Location;
+            end
+            if type(Source) ~= "table" then
+                return false, "source location must be a table";
+            end
+
+            local OkEncode, Encoded = pcall(function()
+                return HttpService:JSONEncode({
+                    __wallyPreset = true;
+                    schemaVersion = SchemaVersion;
+                    savedAt = os.time();
+                    build = tostring(Library.Build or "");
+                    data = SerializeValue(Source);
+                });
+            end);
+            if not OkEncode then
+                return false, "failed to encode preset";
+            end
+            return true, Encoded;
+        end
+
+        function Manager:Import(PresetName, JsonContent, Overwrite)
+            local OkFolder, FolderError = EnsureFolderTree();
+            if not OkFolder then
+                return false, FolderError;
+            end
+
+            if type(JsonContent) ~= "string" or JsonContent == "" then
+                return false, "import data must be a json string";
+            end
+
+            local OkDecode, Decoded = pcall(function()
+                return HttpService:JSONDecode(JsonContent);
+            end);
+            if not OkDecode or type(Decoded) ~= "table" then
+                return false, "invalid json content";
+            end
+
+            local Payload = Decoded;
+            if Payload.__wallyPreset ~= true then
+                Payload = {
+                    __wallyPreset = true;
+                    schemaVersion = SchemaVersion;
+                    savedAt = os.time();
+                    build = tostring(Library.Build or "");
+                    data = Payload;
+                };
+            elseif Payload.schemaVersion == nil then
+                Payload.schemaVersion = SchemaVersion;
+            end
+
+            local Path, SafeName = GetPresetPath(PresetName);
+            local OkFile, Exists = pcall(FileApi.IsFile, Path);
+            if OkFile and Exists and Overwrite ~= true then
+                return false, "preset already exists";
+            end
+
+            local Encoded;
+            local OkEncode = pcall(function()
+                Encoded = HttpService:JSONEncode(Payload);
+            end);
+            if not OkEncode then
+                return false, "failed to encode imported preset";
+            end
+
+            local OkWrite = pcall(FileApi.WriteFile, Path, Encoded);
+            if not OkWrite then
+                return false, "failed to write imported preset";
+            end
+
+            return true, SafeName;
+        end
+
         function Manager:Load(PresetName, TargetLocation, OverrideClearOnLoad)
-            local OkRead, DataOrError = ReadPresetData(PresetName);
+            local OkRead, DataOrError, Meta = ReadPresetData(PresetName);
             if not OkRead then
                 return false, DataOrError;
             end
@@ -3886,6 +5375,11 @@ local Defaults; do
             local ShouldClear = (OverrideClearOnLoad ~= nil and OverrideClearOnLoad) or (OverrideClearOnLoad == nil and ClearOnLoad);
             if type(TargetLocation) == "table" then
                 MergeInto(TargetLocation, DataOrError, ShouldClear);
+                if type(Meta) == "table" and Meta.migrated == true then
+                    pcall(function()
+                        self:Save(PresetName, DataOrError);
+                    end);
+                end
                 return true, DataOrError;
             end
 
@@ -3893,6 +5387,11 @@ local Defaults; do
                 local OkApply, ApplyError = Library:ApplyScriptPresetData(DataOrError, ShouldClear);
                 if not OkApply then
                     return false, ApplyError;
+                end
+                if type(Meta) == "table" and Meta.migrated == true then
+                    pcall(function()
+                        self:Save(PresetName, DataOrError);
+                    end);
                 end
                 return true, DataOrError;
             end
@@ -3903,6 +5402,13 @@ local Defaults; do
             end
 
             MergeInto(Target, DataOrError, ShouldClear);
+
+            if type(Meta) == "table" and Meta.migrated == true then
+                pcall(function()
+                    self:Save(PresetName, DataOrError);
+                end);
+            end
+
             return true, DataOrError;
         end
 
@@ -4058,6 +5564,7 @@ local Defaults; do
         notifyduration = 4;
         notifymax = 6;
         notifypadding = 6;
+        persistwindow = false;
 
         placeholdercolor = Color3.fromRGB(255, 255, 255);
         titlestrokecolor = Color3.fromRGB(0, 0, 0);
@@ -4559,8 +6066,100 @@ local Defaults; do
             RefreshPresetDropdown();
         end);
 
+        local SchemaInfoLabel = SettingsWindow:Label("Preset Schema Version: " .. tostring(PresetManager:GetSchemaVersion()), {
+            textSize = 15;
+            textColor = Color3.fromRGB(190, 220, 255);
+            bgColor = Color3.fromRGB(30, 34, 40);
+            borderColor = Color3.fromRGB(60, 68, 78);
+        });
+
+        SettingsWindow:Button("Export Preset (Clipboard)", function()
+            if not PresetManager:IsAvailable() then
+                PresetStateLabel:Refresh("Preset State: Export failed (file APIs unavailable)");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+                return;
+            end
+
+            local Clipboard = (type(setclipboard) == "function" and setclipboard) or nil;
+            if not Clipboard then
+                PresetStateLabel:Refresh("Preset State: Export failed (setclipboard unavailable)");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+                return;
+            end
+
+            local PresetName = TrimText(ThemeState.SelectedPreset);
+            if PresetName == "" or PresetName == "(none)" then
+                PresetName = TrimText(ThemeState.PresetName);
+            end
+            if PresetName == "" or PresetName == "(none)" then
+                PresetStateLabel:Refresh("Preset State: Export failed (no preset selected)");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+                return;
+            end
+
+            local OkExport, Exported = PresetManager:Export(PresetName);
+            if not OkExport then
+                PresetStateLabel:Refresh("Preset State: Export failed (" .. tostring(Exported) .. ")");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+                return;
+            end
+
+            local OkClip = pcall(Clipboard, tostring(Exported));
+            if not OkClip then
+                PresetStateLabel:Refresh("Preset State: Export failed (clipboard write error)");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+                return;
+            end
+
+            PresetStateLabel:Refresh("Preset State: Exported \"" .. tostring(PresetName) .. "\" to clipboard");
+            PresetStateLabel:SetColor(Color3.fromRGB(175, 255, 175));
+            self:NotifySuccess("Wally Settings", "Exported preset to clipboard", 2);
+        end);
+
+        SettingsWindow:Button("Import Preset (Clipboard)", function()
+            if not PresetManager:IsAvailable() then
+                PresetStateLabel:Refresh("Preset State: Import failed (file APIs unavailable)");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+                return;
+            end
+
+            local GetClipboard = (type(getclipboard) == "function" and getclipboard) or nil;
+            if not GetClipboard then
+                PresetStateLabel:Refresh("Preset State: Import failed (getclipboard unavailable)");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+                return;
+            end
+
+            local PresetName = TrimText(ThemeState.PresetName);
+            if PresetName == "" then
+                PresetName = "Imported";
+                ThemeState.PresetName = PresetName;
+                PresetNameBox.Text = PresetName;
+            end
+
+            local OkClip, ClipboardData = pcall(GetClipboard);
+            if not OkClip or type(ClipboardData) ~= "string" or ClipboardData == "" then
+                PresetStateLabel:Refresh("Preset State: Import failed (clipboard is empty)");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+                return;
+            end
+
+            local OkImport, Result = PresetManager:Import(PresetName, ClipboardData, true);
+            if not OkImport then
+                PresetStateLabel:Refresh("Preset State: Import failed (" .. tostring(Result) .. ")");
+                PresetStateLabel:SetColor(Color3.fromRGB(255, 145, 145));
+                return;
+            end
+
+            RefreshPresetDropdown(Result);
+            PresetStateLabel:Refresh("Preset State: Imported \"" .. tostring(Result) .. "\" from clipboard");
+            PresetStateLabel:SetColor(Color3.fromRGB(175, 255, 175));
+            self:NotifySuccess("Wally Settings", "Imported preset from clipboard", 2);
+        end);
+
         SyncControlsFromState();
         PresetInfoLabel:Refresh("Preset Folder: " .. tostring(PresetManager:GetFolder()));
+        SchemaInfoLabel:Refresh("Preset Schema Version: " .. tostring(PresetManager:GetSchemaVersion()));
 
         return {
             Window = SettingsWindow;
@@ -4585,6 +6184,233 @@ local Defaults; do
         end
 
         return SelfRef:SettingsWindow(ActualOptions);
+    end
+
+    function Library:GetAutoScriptStorageKey()
+        local function Sanitize(Value, Fallback)
+            local Text = tostring(Value or Fallback or "Script");
+            Text = Text:gsub("[%c]", ""):gsub("[\\/:*?\"<>|]", "_");
+            Text = Text:gsub("%s+", "_"):gsub("_+", "_");
+            Text = Text:gsub("^_+", ""):gsub("_+$", "");
+            if Text == "" then
+                Text = tostring(Fallback or "Script");
+            end
+            return Text;
+        end
+
+        local function HashText(Text)
+            local Hash = 5381;
+            for Index = 1, #Text do
+                Hash = ((Hash * 33) + string.byte(Text, Index)) % 2147483647;
+            end
+            return tostring(Hash);
+        end
+
+        local Source = "";
+        if type(getfenv) == "function" then
+            for Level = 3, 12 do
+                local OkEnv, Env = pcall(getfenv, Level);
+                if OkEnv and type(Env) == "table" then
+                    local ScriptObject = rawget(Env, "script");
+                    if typeof(ScriptObject) == "Instance" then
+                        local OkName, FullName = pcall(function()
+                            return ScriptObject:GetFullName();
+                        end);
+                        if OkName and type(FullName) == "string" and FullName ~= "" then
+                            Source = FullName;
+                            break;
+                        end
+                        Source = tostring(ScriptObject.Name or "");
+                        break;
+                    end
+                end
+            end
+        end
+
+        if Source == "" and debug and debug.info then
+            for Level = 3, 12 do
+                local OkSource, SourceData = pcall(function()
+                    return debug.info(Level, "s");
+                end);
+                if OkSource and type(SourceData) == "string" and SourceData ~= "" then
+                    Source = SourceData;
+                    break;
+                end
+            end
+        end
+
+        if Source == "" then
+            Source = "UnknownScript";
+        end
+
+        local PlacePart = tostring(game.PlaceId or 0);
+        local Combined = Source .. "|Place:" .. PlacePart;
+        return Sanitize(Source, "Script") .. "_" .. HashText(Combined);
+    end
+
+    function Library:AttachWindowPersistence(WindowData, WindowName, Options)
+        if type(WindowData) ~= "table" or (not WindowData.object) or (not WindowData.object.Parent) then
+            return false, "invalid window";
+        end
+
+        local PersistEnabled = false;
+        local PersistOptions = {};
+        if type(Options) == "table" then
+            if Options.persist == true or Options.persistwindow == true or Options.windowPersistence == true then
+                PersistEnabled = true;
+            end
+            if type(Options.windowPersistence) == "table" then
+                for Key, Value in next, Options.windowPersistence do
+                    PersistOptions[Key] = Value;
+                end
+                PersistEnabled = (PersistOptions.enabled ~= false);
+            end
+        end
+        if not PersistEnabled and type(self.Options) == "table" and self.Options.persistwindow == true then
+            PersistEnabled = true;
+        end
+        if not PersistEnabled then
+            return false, "disabled";
+        end
+
+        local IsFolder = (type(isfolder) == "function" and isfolder) or nil;
+        local MakeFolder = (type(makefolder) == "function" and makefolder) or nil;
+        local IsFile = (type(isfile) == "function" and isfile) or nil;
+        local ReadFile = (type(readfile) == "function" and readfile) or nil;
+        local WriteFile = (type(writefile) == "function" and writefile) or nil;
+        if not (IsFolder and MakeFolder and IsFile and ReadFile and WriteFile) then
+            return false, "file APIs unavailable";
+        end
+
+        local function Sanitize(Value, Fallback)
+            local Text = tostring(Value or Fallback or "Window");
+            Text = Text:gsub("[%c]", ""):gsub("[\\/:*?\"<>|]", "_");
+            Text = Text:gsub("%s+", "_"):gsub("_+", "_");
+            Text = Text:gsub("^_+", ""):gsub("_+$", "");
+            if Text == "" then
+                Text = tostring(Fallback or "Window");
+            end
+            return Text;
+        end
+
+        local RootFolder = tostring(PersistOptions.rootFolder or PersistOptions.folder or "WallyModifiedWindowState");
+        local ScriptFolder = tostring(PersistOptions.scriptFolder or PersistOptions.scriptKey or self:GetAutoScriptStorageKey());
+        local ScriptPath = RootFolder .. "/" .. Sanitize(ScriptFolder, "Script");
+        local FilePath = ScriptPath .. "/" .. tostring(PersistOptions.fileName or "windows.json");
+        local WindowKey = tostring(PersistOptions.windowKey or WindowName or "Window");
+        WindowKey = Sanitize(WindowKey, "Window");
+
+        local function EnsureFolder()
+            local OkRoot, RootExists = pcall(IsFolder, RootFolder);
+            if (not OkRoot) or (not RootExists) then
+                local OkMakeRoot = pcall(MakeFolder, RootFolder);
+                if not OkMakeRoot then
+                    return false;
+                end
+            end
+
+            local OkScript, ScriptExists = pcall(IsFolder, ScriptPath);
+            if (not OkScript) or (not ScriptExists) then
+                local OkMakeScript = pcall(MakeFolder, ScriptPath);
+                if not OkMakeScript then
+                    return false;
+                end
+            end
+            return true;
+        end
+
+        local function ReadAllState()
+            if not EnsureFolder() then
+                return {};
+            end
+            local OkFile, Exists = pcall(IsFile, FilePath);
+            if (not OkFile) or (not Exists) then
+                return {};
+            end
+
+            local OkRead, Content = pcall(ReadFile, FilePath);
+            if not OkRead then
+                return {};
+            end
+
+            local OkDecode, Data = pcall(function()
+                return HttpService:JSONDecode(Content);
+            end);
+            if not OkDecode or type(Data) ~= "table" then
+                return {};
+            end
+            return Data;
+        end
+
+        local function SaveAllState(Data)
+            if type(Data) ~= "table" then
+                return false;
+            end
+            if not EnsureFolder() then
+                return false;
+            end
+
+            local OkEncode, Encoded = pcall(function()
+                return HttpService:JSONEncode(Data);
+            end);
+            if not OkEncode then
+                return false;
+            end
+
+            local OkWrite = pcall(WriteFile, FilePath, Encoded);
+            return OkWrite == true;
+        end
+
+        local StateData = ReadAllState();
+        local Existing = StateData[WindowKey];
+        if type(Existing) == "table" then
+            if type(Existing.position) == "table" then
+                local PX = tonumber(Existing.position.xScale) or 0;
+                local Pxo = tonumber(Existing.position.xOffset) or WindowData.object.Position.X.Offset;
+                local PY = tonumber(Existing.position.yScale) or 0;
+                local Pyo = tonumber(Existing.position.yOffset) or WindowData.object.Position.Y.Offset;
+                WindowData.object.Position = UDim2.new(PX, Pxo, PY, Pyo);
+            end
+            if Existing.minimized ~= nil and type(WindowData.SetMinimized) == "function" then
+                WindowData:SetMinimized(Existing.minimized == true, false);
+            end
+        end
+
+        local SaveQueued = false;
+        local function QueueSave()
+            if SaveQueued then
+                return;
+            end
+            SaveQueued = true;
+            task.delay(0.15, function()
+                SaveQueued = false;
+                if (not WindowData.object) or (not WindowData.object.Parent) then
+                    return;
+                end
+
+                local Current = ReadAllState();
+                Current[WindowKey] = {
+                    minimized = (type(WindowData.GetMinimized) == "function" and WindowData:GetMinimized() or false);
+                    position = {
+                        xScale = WindowData.object.Position.X.Scale;
+                        xOffset = WindowData.object.Position.X.Offset;
+                        yScale = WindowData.object.Position.Y.Scale;
+                        yOffset = WindowData.object.Position.Y.Offset;
+                    };
+                    savedAt = os.time();
+                    build = tostring(self.Build or "");
+                };
+                SaveAllState(Current);
+            end);
+        end
+
+        WindowData.object:GetPropertyChangedSignal("Position"):Connect(QueueSave);
+        WindowData.object:GetAttributeChangedSignal("WallyWindowToggled"):Connect(QueueSave);
+        WindowData.OnToggleChanged = function()
+            QueueSave();
+        end
+        QueueSave();
+        return true, FilePath;
     end
 		
     function Library:CreateWindow(Name, Options)
@@ -4615,6 +6441,7 @@ local Defaults; do
         local WindowData = Types.Window(Name, Library.Options);
         Dragger.New(WindowData.object);
         self:ApplyWindowOptions();
+        self:AttachWindowPersistence(WindowData, Name, Options);
         return WindowData
     end
 
@@ -4688,22 +6515,119 @@ local Defaults; do
         return Inp.KeyCode == NormalizedBind;
     end
 
-    UserInputService.InputBegan:Connect(function(Input,Gpe)
-        if (not Library.Binding) and (not Gpe) then
-            for Index, BindsData in next, Library.Binds do
-                local RealBinding = BindsData.Location[Index];
-                if RealBinding and IsReallyPressed(RealBinding, Input) then
-                    if Library.BindDebug then
-                        local BindingName = "Unknown";
-                        if typeof(RealBinding) == "EnumItem" then
-                            BindingName = RealBinding.Name;
-                        else
-                            BindingName = tostring(RealBinding);
-                        end
-                        warn("[Wally Modified][BindDebug][" .. tostring(Index) .. "] Triggered by " .. tostring(Input.KeyCode.Name) .. " (bound to " .. tostring(BindingName) .. ")");
-                    end
-                    BindsData.Callback()
+    local function NormalizeBindMode(Mode)
+        local ModeText = string.lower(tostring(Mode or "press"));
+        if ModeText == "toggle" then
+            return "toggle";
+        end
+        if ModeText == "hold" or ModeText == "held" then
+            return "hold";
+        end
+        if ModeText == "always" then
+            return "always";
+        end
+        return "press";
+    end
+
+    local function HandleBindPress(FlagName, BindsData, Input)
+        local GetMode = BindsData and BindsData.GetMode;
+        local Mode = NormalizeBindMode(type(GetMode) == "function" and GetMode() or BindsData.Mode);
+        local Callback = BindsData and BindsData.Callback;
+        if type(Callback) ~= "function" then
+            return;
+        end
+
+        if Mode == "always" then
+            return;
+        end
+
+        if Mode == "toggle" then
+            local GetState = BindsData.GetState;
+            local SetState = BindsData.SetState;
+            local NewState = true;
+            if type(GetState) == "function" then
+                NewState = not (GetState() == true);
+            end
+            if type(SetState) == "function" then
+                SetState(BindsData, NewState, true);
+            else
+                Callback(NewState, Input, "toggle_press");
+            end
+            return;
+        end
+
+        if Mode == "hold" then
+            local GetState = BindsData.GetState;
+            local SetState = BindsData.SetState;
+            local IsHeld = (type(GetState) == "function" and GetState() == true);
+            if not IsHeld then
+                if type(SetState) == "function" then
+                    SetState(BindsData, true, true);
+                else
+                    Callback(true, Input, "hold_start");
                 end
+            end
+            return;
+        end
+
+        Callback(Input, nil, "press");
+    end
+
+    local function HandleBindRelease(BindsData, Input)
+        local GetMode = BindsData and BindsData.GetMode;
+        local Mode = NormalizeBindMode(type(GetMode) == "function" and GetMode() or BindsData.Mode);
+        if Mode ~= "hold" then
+            return;
+        end
+
+        local Callback = BindsData and BindsData.Callback;
+        if type(Callback) ~= "function" then
+            return;
+        end
+
+        local GetState = BindsData.GetState;
+        local SetState = BindsData.SetState;
+        local IsHeld = (type(GetState) == "function" and GetState() == true);
+        if IsHeld then
+            if type(SetState) == "function" then
+                SetState(BindsData, false, true);
+            else
+                Callback(false, Input, "hold_end");
+            end
+        end
+    end
+
+    UserInputService.InputBegan:Connect(function(Input, Gpe)
+        if Library.Binding or Gpe then
+            return;
+        end
+
+        for Index, BindsData in next, Library.Binds do
+            local RealBinding = BindsData.Location and BindsData.Location[Index];
+            if RealBinding and IsReallyPressed(RealBinding, Input) then
+                if Library.BindDebug then
+                    local BindingName = "Unknown";
+                    if typeof(RealBinding) == "EnumItem" then
+                        BindingName = RealBinding.Name;
+                    else
+                        BindingName = tostring(RealBinding);
+                    end
+                    warn("[Wally Modified][BindDebug][" .. tostring(Index) .. "] Triggered by " .. tostring(Input.KeyCode.Name) .. " (bound to " .. tostring(BindingName) .. ")");
+                end
+                HandleBindPress(Index, BindsData, Input);
+            end
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(Input)
+        if Library.Binding then
+            return;
+        end
+
+        for Index, BindsData in next, Library.Binds do
+            local RealBinding = BindsData.Location and BindsData.Location[Index];
+            if RealBinding and IsReallyPressed(RealBinding, Input) then
+                HandleBindRelease(BindsData, Input);
             end
         end
     end)
