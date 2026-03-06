@@ -18,7 +18,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.47",
+    Build = "v47",
     BindDebug = false
 };
 local Defaults; do
