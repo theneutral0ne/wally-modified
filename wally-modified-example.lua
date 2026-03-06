@@ -1,4 +1,4 @@
--- Wally Modified: Practical Full Example (Two Windows)
+-- Wally Modified: Practical Full Example (Multi-Window)
 -- Showcase of every control + runtime API.
 
 local Players = game:GetService("Players")
@@ -72,6 +72,38 @@ local SettingsWindowApi = Library:SettingsWindows({
         separateByPlace = true,
     },
 })
+
+local function GetLocalPlayerThumbnail()
+    local Ok, Thumbnail = pcall(function()
+        return Players:GetUserThumbnailAsync(
+            LocalPlayer.UserId,
+            Enum.ThumbnailType.HeadShot,
+            Enum.ThumbnailSize.Size420x420
+        )
+    end)
+
+    if Ok and type(Thumbnail) == "string" and Thumbnail ~= "" then
+        return Thumbnail
+    end
+
+    return "rbxassetid://0"
+end
+
+local ImagePreviewWindow = Library:CreateImagePreviewWindow("Wally Practical - Image Preview", {
+    windowOptions = WindowOptions,
+    windowWidth = 260,
+    windowMinWidth = 220,
+    windowMaxWidth = 360,
+    resizable = true,
+    persistwindow = true,
+    image = GetLocalPlayerThumbnail(),
+    caption = "LocalPlayer Headshot Preview",
+    previewHeight = 190,
+    scaleType = Enum.ScaleType.Fit,
+    backgroundColor = Color3.fromRGB(20, 20, 20),
+    borderColor = Color3.fromRGB(65, 65, 65),
+})
+ImagePreviewWindow:SetVisible(false)
 
 local function ColorToRgbText(ColorValue)
     return string.format(
@@ -471,6 +503,55 @@ local TeleportButton = UtilityWindow:Button("Teleport To Target", function()
 
     RootPart.CFrame = TargetRoot.CFrame + Vector3.new(0, 3, 0)
     StateLabel:Refresh("State: Teleported to " .. TargetPlayer.Name)
+end)
+
+UtilityWindow:Section("Image Preview")
+
+local PreviewImageSourceBox = UtilityWindow:Box("Preview Image Source", {
+    location = Flags,
+    flag = "PreviewImageSource",
+    type = "string",
+    default = "",
+    tooltip = "rbxassetid://<id>, numeric id, or thumbnail URL.",
+})
+
+UtilityWindow:Button("Apply Preview Image Source", function()
+    local SourceValue = tostring(Flags.PreviewImageSource or "")
+    if SourceValue == "" then
+        SourceValue = "rbxassetid://0"
+    end
+    ImagePreviewWindow:SetImage(SourceValue)
+    ImagePreviewWindow:SetCaption("Custom Source: " .. SourceValue)
+    ImagePreviewWindow:SetVisible(true)
+    ImagePreviewWindow:BringToFront()
+    StateLabel:Refresh("State: Applied preview source")
+end)
+
+UtilityWindow:Button("Use LocalPlayer Thumbnail", function()
+    local Thumbnail = GetLocalPlayerThumbnail()
+    Flags.PreviewImageSource = Thumbnail
+    PreviewImageSourceBox:Set(Thumbnail, false)
+    ImagePreviewWindow:SetImage(Thumbnail)
+    ImagePreviewWindow:SetCaption(LocalPlayer.Name .. " Headshot")
+    ImagePreviewWindow:SetVisible(true)
+    ImagePreviewWindow:BringToFront()
+    StateLabel:Refresh("State: Loaded LocalPlayer thumbnail")
+end)
+
+UtilityWindow:Button("Toggle Preview Window", function()
+    local NextVisible = not ImagePreviewWindow:IsVisible()
+    ImagePreviewWindow:SetVisible(NextVisible)
+    if NextVisible then
+        ImagePreviewWindow:BringToFront()
+    end
+    StateLabel:Refresh("State: Image preview visible = " .. tostring(NextVisible))
+end)
+
+UtilityWindow:Button("Center Preview Window", function()
+    ImagePreviewWindow:SetVisible(true)
+    ImagePreviewWindow:Center()
+    ImagePreviewWindow:BringToFront()
+    StateLabel:Refresh("State: Centered image preview window")
 end)
 
 UtilityWindow:Section("Runtime API Demo")
