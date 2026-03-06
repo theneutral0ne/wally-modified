@@ -18,8 +18,10 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-06.51",
-    BindDebug = false
+    Build = "2026-03-06.52",
+    BindDebug = false,
+    CallbackSuspendDepth = 0,
+    BatchUpdateDepth = 0
 };
 local Defaults; do
     local Dragger = {}; do
@@ -99,13 +101,26 @@ local Defaults; do
 	                0,
 	                40
 	            );
+                local function ClampWidth(Value, MinWidth, MaxWidth)
+                    local Numeric = math.floor((tonumber(Value) or 190) + 0.5);
+                    local MinData = math.max(120, math.floor((tonumber(MinWidth) or 170) + 0.5));
+                    local MaxData = math.max(MinData, math.floor((tonumber(MaxWidth) or 420) + 0.5));
+                    return math.clamp(Numeric, MinData, MaxData), MinData, MaxData;
+                end
+                local WindowWidth, MinWindowWidth, MaxWindowWidth = ClampWidth(
+                    Options.width or Options.windowwidth,
+                    Options.minwidth,
+                    Options.maxwidth
+                );
+                local AutoWidthPadding = math.clamp(math.floor((tonumber(Options.autowidthpadding or Options.widthpadding) or 12) + 0.5), 0, 80);
+                local WindowStride = math.max(200, WindowWidth + 10);
 	            local NewWindow = Library:Create('Frame', {
                 Name = Name;
-                Size = UDim2.new(0, 190, 0, 30);
+                Size = UDim2.new(0, WindowWidth, 0, 30);
                 BackgroundColor3 = Options.topcolor;
                 BorderSizePixel = 0;
                 Parent = Library.Container;
-                Position = UDim2.new(0, (15 + (200 * Library.Count) - 200), 0, 0);
+                Position = UDim2.new(0, (15 + (WindowStride * Library.Count) - WindowStride), 0, 0);
                 ZIndex = 3;
                 Library:Create('TextLabel', {
                     Name = "window_title";
@@ -197,8 +212,100 @@ local Defaults; do
                 OrderData = 0;
                 order = 0;
                 AutoFlagPrefix = tostring(Name or "Window") .. "_" .. tostring(Library.Count);
+                Width = WindowWidth;
+                MinWidth = MinWindowWidth;
+                MaxWidth = MaxWindowWidth;
+                AutoWidth = (Options.autowidth == true or Options.autoWidth == true or Options.autosize == true);
+                AutoWidthPadding = AutoWidthPadding;
 
             }, Types)
+
+            local function MeasureTextWidth(TextObject)
+                if (not TextObject) or (not TextObject.Parent) then
+                    return 0;
+                end
+
+                local TextValue = tostring(TextObject.Text or "");
+                if TextValue == "" then
+                    return 0;
+                end
+
+                local TextSize = tonumber(TextObject.TextSize) or tonumber(WindowData.options and WindowData.options.fontsize) or 17;
+                if TextObject.TextScaled then
+                    TextSize = math.max(TextSize, tonumber(WindowData.options and WindowData.options.fontsize) or 17);
+                end
+
+                local OkBounds, Bounds = pcall(function()
+                    return TextService:GetTextSize(TextValue, math.max(1, math.floor(TextSize + 0.5)), TextObject.Font, Vector2.new(4096, 512));
+                end);
+                if OkBounds and typeof(Bounds) == "Vector2" then
+                    return Bounds.X;
+                end
+                return 0;
+            end
+
+            function WindowData:SetWidth(NewWidth)
+                local Width = math.floor((tonumber(NewWidth) or self.Width or WindowWidth) + 0.5);
+                Width = math.clamp(Width, self.MinWidth or MinWindowWidth, self.MaxWidth or MaxWindowWidth);
+                if self.Width == Width then
+                    return self.Width;
+                end
+                self.Width = Width;
+                if self.object and self.object.Parent then
+                    self.object.Size = UDim2.new(0, Width, self.object.Size.Y.Scale, self.object.Size.Y.Offset);
+                end
+                if type(self.RefreshTabHostSize) == "function" then
+                    self:RefreshTabHostSize();
+                end
+                return self.Width;
+            end
+
+            function WindowData:GetWidth()
+                return tonumber(self.Width) or WindowWidth;
+            end
+
+            function WindowData:SetAutoWidth(State, RefreshNow)
+                self.AutoWidth = (State == true);
+                if RefreshNow ~= false then
+                    self:RefreshAutoWidth(self.AutoWidth == true);
+                end
+                return self.AutoWidth;
+            end
+
+            function WindowData:GetAutoWidth()
+                return self.AutoWidth == true;
+            end
+
+            function WindowData:RefreshAutoWidth(Force)
+                if (not self.object) or (not self.object.Parent) then
+                    return self:GetWidth();
+                end
+                if self.AutoWidth ~= true and Force ~= true then
+                    return self:GetWidth();
+                end
+
+                local RootX = self.object.AbsolutePosition.X;
+                local RequiredWidth = tonumber(self.MinWidth) or MinWindowWidth;
+                local ExtraPadding = tonumber(self.AutoWidthPadding) or AutoWidthPadding;
+                for _, Descendant in next, self.object:GetDescendants() do
+                    if Descendant:IsA("TextLabel") or Descendant:IsA("TextButton") or Descendant:IsA("TextBox") then
+                        if Descendant.Visible ~= false then
+                            local LocalLeft = Descendant.AbsolutePosition.X - RootX;
+                            local TextRight = LocalLeft + MeasureTextWidth(Descendant) + 10;
+                            if TextRight > RequiredWidth then
+                                RequiredWidth = TextRight;
+                            end
+                        end
+                    end
+                end
+
+                local TargetWidth = math.max(
+                    tonumber(self.Width) or WindowWidth,
+                    math.floor(RequiredWidth + ExtraPadding + 0.5)
+                );
+                self:SetWidth(TargetWidth);
+                return self:GetWidth();
+            end
 
             table.insert(Library.Queue, {
                 Window = WindowData.object;
@@ -211,6 +318,7 @@ local Defaults; do
                     if WindowData.toggled then
                         WindowData.container.Size = UDim2.new(1, 0, 0, GetContentHeight());
                     end
+                    WindowData:RefreshAutoWidth(false);
                 end)
             end
 
@@ -260,6 +368,7 @@ local Defaults; do
             end
 
             NewWindow:SetAttribute("WallyWindowToggled", WindowData.toggled);
+            WindowData:RefreshAutoWidth(false);
 
             return WindowData;
         end
@@ -277,6 +386,11 @@ local Defaults; do
                     end
                     self.container.Size = UDim2.new(1, 0, 0, Y + 5);
                 end
+            end
+
+            local ParentWindow = self.ParentWindow or self;
+            if ParentWindow and type(ParentWindow.RefreshAutoWidth) == "function" then
+                ParentWindow:RefreshAutoWidth(false);
             end
         end
         
@@ -315,6 +429,13 @@ local Defaults; do
                 return DefaultValue == true;
             end
             return Value == true;
+        end
+
+        local function ShouldDispatchCallback(FireCallback)
+            if FireCallback == false then
+                return false;
+            end
+            return (Library.CallbackSuspendDepth or 0) <= 0;
         end
 
         local function NormalizeDependencyMode(Value)
@@ -897,6 +1018,9 @@ local Defaults; do
                 if self.ParentTabOwner and type(self.ParentTabOwner.RefreshTabHostSize) == "function" then
                     self.ParentTabOwner:RefreshTabHostSize();
                 end
+                if self.ParentWindow and type(self.ParentWindow.RefreshAutoWidth) == "function" then
+                    self.ParentWindow:RefreshAutoWidth(false);
+                end
             end
 
             return Owner.TabHost, Owner.TabHeader, Owner.TabPages;
@@ -1063,7 +1187,9 @@ local Defaults; do
                 if type(self.SetSearchQuery) == "function" then
                     self:SetSearchQuery(Query);
                 end
-                CallbackData(Query);
+                if ShouldDispatchCallback(true) then
+                    CallbackData(Query);
+                end
             end
 
             SearchInput:GetPropertyChangedSignal("Text"):Connect(function()
@@ -1079,7 +1205,7 @@ local Defaults; do
                     IsInternalChange = true;
                     SearchInput.Text = tostring(NewValue or "");
                     IsInternalChange = false;
-                    if FireCallback ~= false then
+                    if ShouldDispatchCallback(FireCallback) then
                         ApplyQuery(SearchInput.Text);
                     else
                         if type(self.SetSearchQuery) == "function" then
@@ -1094,7 +1220,7 @@ local Defaults; do
                     IsInternalChange = true;
                     SearchInput.Text = "";
                     IsInternalChange = false;
-                    if FireCallback ~= false then
+                    if ShouldDispatchCallback(FireCallback) then
                         ApplyQuery("");
                     else
                         if type(self.SetSearchQuery) == "function" then
@@ -1222,7 +1348,7 @@ local Defaults; do
                 
             local function SetToggleState(NewValue, FireCallback)
                 Location[Flag] = (NewValue == true);
-                if FireCallback ~= false then
+                if ShouldDispatchCallback(FireCallback) then
                     Callback(Location[Flag]);
                 end
                 UpdateVisualState();
@@ -1243,12 +1369,14 @@ local Defaults; do
 
             Library:RegisterFlagController(Location, Flag, {
                 Set = function(Value, FireCallback)
-                    SetToggleState(Value, FireCallback ~= false);
+                    SetToggleState(Value, FireCallback);
                 end
             });
 
             if Location[Flag] == true then
-                Callback(Location[Flag])
+                if ShouldDispatchCallback(true) then
+                    Callback(Location[Flag])
+                end
             end
 
             self:Resize();
@@ -1293,12 +1421,18 @@ local Defaults; do
             });
             
             local ButtonObject = CheckData:FindFirstChild(Name);
-            ButtonObject.MouseButton1Click:Connect(Callback)
+            ButtonObject.MouseButton1Click:Connect(function(...)
+                if ShouldDispatchCallback(true) then
+                    Callback(...);
+                end
+            end)
             self:Resize();
 
             local ApiData = {
                 Fire = function()
-                    Callback();
+                    if ShouldDispatchCallback(true) then
+                        Callback();
+                    end
                 end
             };
 
@@ -1387,7 +1521,7 @@ local Defaults; do
                     BoxData.Text = TextValue;
                 end
 
-                if FireCallback ~= false then
+                if ShouldDispatchCallback(FireCallback) then
                     Callback(Location[Flag], Old, EventData);
                 end
             end
@@ -1416,7 +1550,7 @@ local Defaults; do
 
             Library:RegisterFlagController(Location, Flag, {
                 Set = function(Value, FireCallback)
-                    SetBoxValue(Value, FireCallback ~= false, nil);
+                    SetBoxValue(Value, FireCallback, nil);
                 end
             });
             
@@ -1428,7 +1562,7 @@ local Defaults; do
                     return Location[Flag];
                 end,
                 Set = function(_, NewValue, FireCallback)
-                    SetBoxValue(NewValue, FireCallback ~= false, nil);
+                    SetBoxValue(NewValue, FireCallback, nil);
                 end,
             };
 
@@ -1793,7 +1927,7 @@ local Defaults; do
 	                Location[Flag] = Normalized;
 	                ButtonData.Text = GetInputName(Location[Flag]);
 
-	                if FireCallback == true then
+	                if FireCallback == true and ShouldDispatchCallback(true) then
 	                    Callback(Location[Flag]);
 	                end
 
@@ -1804,7 +1938,7 @@ local Defaults; do
 	                Location[Flag] = nil;
 	                ButtonData.Text = GetInputName(Location[Flag]);
 
-	                if FireCallback == true then
+	                if FireCallback == true and ShouldDispatchCallback(true) then
 	                    Callback(Location[Flag]);
 	                end
 
@@ -1824,7 +1958,7 @@ local Defaults; do
 
                     if OldMode == "hold" and HoldState then
                         HoldState = false;
-                        if FireCallback ~= false then
+                        if ShouldDispatchCallback(FireCallback) then
                             Callback(false, Location[Flag], "hold_end");
                         end
                     end
@@ -1833,7 +1967,7 @@ local Defaults; do
                     end
                     if OldMode == "always" and AlwaysState then
                         AlwaysState = false;
-                        if FireCallback ~= false then
+                        if ShouldDispatchCallback(FireCallback) then
                             Callback(false, Location[Flag], "always_end");
                         end
                     end
@@ -1842,7 +1976,7 @@ local Defaults; do
                     Location[ModeFlag] = CurrentMode;
                     if NextMode == "always" then
                         AlwaysState = true;
-                        if FireCallback ~= false then
+                        if ShouldDispatchCallback(FireCallback) then
                             Callback(true, Location[Flag], "always_start");
                         end
                     end
@@ -1871,21 +2005,21 @@ local Defaults; do
                     local Desired = (NewState == true);
                     if CurrentMode == "toggle" then
                         ToggleState = Desired;
-                        if FireCallback ~= false then
+                        if ShouldDispatchCallback(FireCallback) then
                             Callback(ToggleState, Location[Flag], "toggle_state");
                         end
                         return ToggleState;
                     end
                     if CurrentMode == "hold" then
                         HoldState = Desired;
-                        if FireCallback ~= false then
+                        if ShouldDispatchCallback(FireCallback) then
                             Callback(HoldState, Location[Flag], (HoldState and "hold_start" or "hold_end"));
                         end
                         return HoldState;
                     end
                     if CurrentMode == "always" then
                         AlwaysState = Desired;
-                        if FireCallback ~= false then
+                        if ShouldDispatchCallback(FireCallback) then
                             Callback(AlwaysState, Location[Flag], (AlwaysState and "always_start" or "always_end"));
                         end
                         return AlwaysState;
@@ -1895,12 +2029,12 @@ local Defaults; do
 
                 Library:RegisterFlagController(Location, Flag, {
                     Set = function(NewBinding, FireCallback)
-                        ApiData:Set(NewBinding, FireCallback == true);
+                        ApiData:Set(NewBinding, FireCallback);
                     end
                 });
                 Library:RegisterFlagController(Location, ModeFlag, {
                     Set = function(NewMode, FireCallback)
-                        ApiData:SetMode(NewMode, FireCallback ~= false);
+                        ApiData:SetMode(NewMode, FireCallback);
                     end
                 });
 
@@ -1920,14 +2054,16 @@ local Defaults; do
                         return ApiData:GetState();
                     end;
                     SetState = function(_, NewState, FireCallback)
-                        return ApiData:SetState(NewState, FireCallback ~= false);
+                        return ApiData:SetState(NewState, FireCallback);
                     end;
 	            };
                 Library.Binds[Flag] = BindEntry;
 
                 if CurrentMode == "always" then
                     AlwaysState = true;
-                    Callback(true, Location[Flag], "always_start");
+                    if ShouldDispatchCallback(true) then
+                        Callback(true, Location[Flag], "always_start");
+                    end
                 end
 
 	            return self:AttachControlFeatures(CheckData, Options, ApiData, {ButtonData}, tostring(Name));
@@ -2017,6 +2153,10 @@ local Defaults; do
             local ApiData = {
                 Refresh = function(_, NewText)
                     LabelObject.Text = tostring(NewText);
+                    local ParentWindow = self.ParentWindow or self;
+                    if ParentWindow and type(ParentWindow.RefreshAutoWidth) == "function" then
+                        ParentWindow:RefreshAutoWidth(false);
+                    end
                 end,
                 SetColor = function(_, NewColor)
                     if typeof(NewColor) == "Color3" then
@@ -2500,7 +2640,7 @@ local Defaults; do
                 UpdateVisuals();
                 UpdateInputs();
 
-                if FireCallback ~= false then
+                if ShouldDispatchCallback(FireCallback) then
                     Callback(CurrentColor, CurrentTransparency);
                 end
             end
@@ -2839,13 +2979,13 @@ local Defaults; do
 
             Library:RegisterFlagController(Location, Flag, {
                 Set = function(NewColor, FireCallback)
-                    ApplyColor(NewColor, FireCallback ~= false, CurrentTransparency);
+                    ApplyColor(NewColor, FireCallback, CurrentTransparency);
                 end
             });
             if TransparencyFlag ~= nil and tostring(TransparencyFlag) ~= "" then
                 Library:RegisterFlagController(TransparencyLocation, TransparencyFlag, {
                     Set = function(NewTransparency, FireCallback)
-                        ApplyState(Hue, Saturation, Value, NewTransparency, FireCallback ~= false);
+                        ApplyState(Hue, Saturation, Value, NewTransparency, FireCallback);
                     end
                 });
             end
@@ -2853,25 +2993,25 @@ local Defaults; do
             self:Resize();
             local ApiData = {
                 Set = function(_, NewColor, FireCallback)
-                    ApplyColor(NewColor, FireCallback ~= false, CurrentTransparency);
+                    ApplyColor(NewColor, FireCallback, CurrentTransparency);
                 end,
                 Get = function()
                     return Location[Flag];
                 end,
                 SetHSV = function(_, NewHue, NewSaturation, NewValue, FireCallback)
-                    ApplyState(NewHue, NewSaturation, NewValue, CurrentTransparency, FireCallback ~= false);
+                    ApplyState(NewHue, NewSaturation, NewValue, CurrentTransparency, FireCallback);
                 end,
                 GetHSV = function()
                     return Hue, Saturation, Value;
                 end,
                 SetTransparency = function(_, NewTransparency, FireCallback)
-                    ApplyState(Hue, Saturation, Value, NewTransparency, FireCallback ~= false);
+                    ApplyState(Hue, Saturation, Value, NewTransparency, FireCallback);
                 end,
                 GetTransparency = function()
                     return CurrentTransparency;
                 end,
                 SetAlpha = function(_, NewTransparency, FireCallback)
-                    ApplyState(Hue, Saturation, Value, NewTransparency, FireCallback ~= false);
+                    ApplyState(Hue, Saturation, Value, NewTransparency, FireCallback);
                 end,
                 GetAlpha = function()
                     return CurrentTransparency;
@@ -3025,7 +3165,7 @@ local Defaults; do
 
                 if CurrentValue ~= Value then
                     CurrentValue = Value;
-                    if FireCallback ~= false then
+                    if ShouldDispatchCallback(FireCallback) then
                         Callback(Value);
                     end
                 end
@@ -3068,7 +3208,7 @@ local Defaults; do
 
             Library:RegisterFlagController(Location, Flag, {
                 Set = function(NewValue, FireCallback)
-                    SetValue(NewValue, FireCallback ~= false);
+                    SetValue(NewValue, FireCallback);
                 end
             });
 
@@ -3173,7 +3313,9 @@ local Defaults; do
                                 Busy = false;
 
                                 Location[Flag] = ButtonData.Text;
-                                Callback(Location[Flag]);
+                                if ShouldDispatchCallback(true) then
+                                    Callback(Location[Flag]);
+                                end
 
                                 ResultContainer.ScrollBarThickness = 0;
                                 ClearRows();
@@ -3211,14 +3353,18 @@ local Defaults; do
 
                 Location[Flag] = TextValue;
                 Rebuild(TextValue);
-                if FireCallback ~= false then
+                if ShouldDispatchCallback(FireCallback) then
                     Callback(Location[Flag]);
+                end
+                local ParentWindow = self.ParentWindow or self;
+                if ParentWindow and type(ParentWindow.RefreshAutoWidth) == "function" then
+                    ParentWindow:RefreshAutoWidth(false);
                 end
             end
 
             Library:RegisterFlagController(Location, Flag, {
                 Set = function(NewValue, FireCallback)
-                    SetSearchValue(NewValue, FireCallback ~= false);
+                    SetSearchValue(NewValue, FireCallback);
                 end
             });
 
@@ -3229,7 +3375,7 @@ local Defaults; do
                 Input = InputBox;
                 Box = InputBox;
                 Set = function(_, NewValue, FireCallback)
-                    SetSearchValue(NewValue, FireCallback ~= false);
+                    SetSearchValue(NewValue, FireCallback);
                 end,
                 Get = function()
                     return Location[Flag];
@@ -3304,8 +3450,12 @@ local Defaults; do
                     Location[Flag] = tostring(NewValue);
                     SelectionLabel.Text = tostring(Location[Flag]);
                     SelectionLabel.TextColor3 = Library.Options.textcolor;
-                    if FireCallback ~= false then
+                    if ShouldDispatchCallback(FireCallback) then
                         Callback(Location[Flag]);
+                    end
+                    local ParentWindow = self.ParentWindow or self;
+                    if ParentWindow and type(ParentWindow.RefreshAutoWidth) == "function" then
+                        ParentWindow:RefreshAutoWidth(false);
                     end
                 end
             end
@@ -3454,7 +3604,7 @@ local Defaults; do
 
             Library:RegisterFlagController(Location, Flag, {
                 Set = function(NewValue, FireCallback)
-                    SetDropdownValue(NewValue, FireCallback ~= false);
+                    SetDropdownValue(NewValue, FireCallback);
                 end
             });
 
@@ -3464,7 +3614,7 @@ local Defaults; do
                     return Location[Flag];
                 end,
                 Set = function(_, Value, FireCallback)
-                    SetDropdownValue(Value, FireCallback ~= false);
+                    SetDropdownValue(Value, FireCallback);
                 end
             };
 
@@ -3748,7 +3898,7 @@ local Defaults; do
 
             local function UpdateSelection(DoCallback)
                 Location[Flag] = SelectedData;
-                if DoCallback ~= false then
+                if ShouldDispatchCallback(DoCallback) then
                     Callback(GetSelectedMap(), GetSelectedArray());
                 end
             end
@@ -3975,7 +4125,7 @@ local Defaults; do
                     SelectedData[Canonical] = nil;
                 end
 
-                UpdateSelection(FireCallback ~= false);
+                UpdateSelection(FireCallback);
                 Render();
             end
 
@@ -4001,7 +4151,7 @@ local Defaults; do
                     end
                 end
 
-                UpdateSelection(FireCallback ~= false);
+                UpdateSelection(FireCallback);
                 Render();
             end
 
@@ -4010,7 +4160,7 @@ local Defaults; do
                     SelectedData[Item] = nil;
                 end
 
-                UpdateSelection(FireCallback ~= false);
+                UpdateSelection(FireCallback);
                 Render();
             end
 
@@ -4036,7 +4186,7 @@ local Defaults; do
                 end
 
                 Location[Flag] = SelectedData;
-                UpdateSelection(FireCallback ~= false);
+                UpdateSelection(FireCallback);
                 Render();
             end
 
@@ -4049,13 +4199,13 @@ local Defaults; do
                     ApplySelectionData(NewValue);
                 end
 
-                UpdateSelection(FireCallback ~= false);
+                UpdateSelection(FireCallback);
                 Render();
             end
 
             Library:RegisterFlagController(Location, Flag, {
                 Set = function(NewValue, FireCallback)
-                    SetMultiSelectValue(NewValue, FireCallback ~= false);
+                    SetMultiSelectValue(NewValue, FireCallback);
                 end
             });
 
@@ -4647,6 +4797,100 @@ local Defaults; do
             end
         end
         return Refreshed;
+    end
+
+    function Library:AreCallbacksSuspended()
+        return (self.CallbackSuspendDepth or 0) > 0;
+    end
+
+    function Library:SuspendCallbacks(State)
+        local ShouldSuspend = true;
+        if State ~= nil then
+            ShouldSuspend = (State == true);
+        end
+
+        self.CallbackSuspendDepth = math.max(tonumber(self.CallbackSuspendDepth) or 0, 0);
+        if ShouldSuspend then
+            self.CallbackSuspendDepth = self.CallbackSuspendDepth + 1;
+        else
+            self.CallbackSuspendDepth = math.max(self.CallbackSuspendDepth - 1, 0);
+        end
+
+        return self.CallbackSuspendDepth > 0, self.CallbackSuspendDepth;
+    end
+
+    function Library:ResumeCallbacks()
+        return self:SuspendCallbacks(false);
+    end
+
+    function Library:BeginBatchUpdate(Options)
+        if type(Options) == "boolean" then
+            Options = {
+                suspendCallbacks = Options;
+            };
+        end
+        Options = Options or {};
+
+        local Context = {
+            __wallyBatch = true;
+            suspendCallbacks = (Options.suspendCallbacks ~= false);
+            refreshDependencies = (Options.refreshDependencies ~= false);
+            _ended = false;
+        };
+
+        self.BatchUpdateDepth = (tonumber(self.BatchUpdateDepth) or 0) + 1;
+        if Context.suspendCallbacks then
+            self:SuspendCallbacks(true);
+        end
+        return Context;
+    end
+
+    function Library:EndBatchUpdate(Context, Options)
+        if type(Context) == "boolean" and Options == nil then
+            Options = {
+                refreshDependencies = Context;
+            };
+            Context = nil;
+        end
+
+        Options = Options or {};
+        if type(Context) == "table" and Context.__wallyBatch == true then
+            if Context._ended then
+                return false, "batch already ended";
+            end
+            Context._ended = true;
+            if Context.suspendCallbacks then
+                self:SuspendCallbacks(false);
+            end
+        end
+
+        self.BatchUpdateDepth = math.max((tonumber(self.BatchUpdateDepth) or 1) - 1, 0);
+
+        local ShouldRefresh = (Options.refreshDependencies ~= false);
+        if type(Context) == "table" and Context.__wallyBatch == true then
+            ShouldRefresh = (Context.refreshDependencies == true and Options.refreshDependencies ~= false);
+        end
+
+        if self.BatchUpdateDepth == 0 and ShouldRefresh then
+            self:RefreshDependencies();
+        end
+
+        return true;
+    end
+
+    function Library:BatchUpdate(Worker, Options)
+        if type(Worker) ~= "function" then
+            return false, "worker must be a function";
+        end
+
+        local Context = self:BeginBatchUpdate(Options);
+        local Results = table.pack(pcall(Worker, self));
+        self:EndBatchUpdate(Context, Options);
+
+        if not Results[1] then
+            error(Results[2], 0);
+        end
+        return table.unpack(Results, 2, Results.n);
     end
 
     function Library:RegisterFlagLocation(Location)
@@ -5636,6 +5880,11 @@ local Defaults; do
 
         autoscaletext = true;
         mintextsize = 10;
+        width = 190;
+        minwidth = 170;
+        maxwidth = 420;
+        autowidth = false;
+        autowidthpadding = 12;
         itemspacing = 0;
         togglestyle = "checkmark";
         toggleoncolor = Color3.fromRGB(0, 255, 140);
@@ -5709,8 +5958,26 @@ local Defaults; do
                     0,
                     40
                 );
+                local MinWidth = math.max(120, math.floor((tonumber(WindowOptions.minwidth) or 170) + 0.5));
+                local MaxWidth = math.max(MinWidth, math.floor((tonumber(WindowOptions.maxwidth) or 420) + 0.5));
+                local Width = math.clamp(
+                    math.floor((tonumber(WindowOptions.width or WindowOptions.windowwidth) or (WindowData.GetWidth and WindowData:GetWidth()) or 190) + 0.5),
+                    MinWidth,
+                    MaxWidth
+                );
+                local AutoWidth = (WindowOptions.autowidth == true or WindowOptions.autoWidth == true or WindowOptions.autosize == true);
+                local AutoWidthPadding = math.clamp(math.floor((tonumber(WindowOptions.autowidthpadding or WindowOptions.widthpadding) or 12) + 0.5), 0, 80);
 
                 WindowObject.BackgroundColor3 = WindowOptions.topcolor;
+                WindowData.MinWidth = MinWidth;
+                WindowData.MaxWidth = MaxWidth;
+                WindowData.AutoWidth = AutoWidth;
+                WindowData.AutoWidthPadding = AutoWidthPadding;
+                if type(WindowData.SetWidth) == "function" then
+                    WindowData:SetWidth(Width);
+                else
+                    WindowObject.Size = UDim2.new(0, Width, WindowObject.Size.Y.Scale, WindowObject.Size.Y.Offset);
+                end
 
                 local WindowTitle = WindowObject:FindFirstChild("window_title");
                 if WindowTitle then
@@ -5754,6 +6021,9 @@ local Defaults; do
 
                 if type(WindowData.Resize) == "function" then
                     WindowData:Resize();
+                end
+                if type(WindowData.RefreshAutoWidth) == "function" then
+                    WindowData:RefreshAutoWidth(false);
                 end
             end
         end
@@ -6666,6 +6936,9 @@ local Defaults; do
         if type(Callback) ~= "function" then
             return;
         end
+        if Library:AreCallbacksSuspended() then
+            return;
+        end
 
         if Mode == "always" then
             return;
@@ -6712,6 +6985,9 @@ local Defaults; do
 
         local Callback = BindsData and BindsData.Callback;
         if type(Callback) ~= "function" then
+            return;
+        end
+        if Library:AreCallbacksSuspended() then
             return;
         end
 
