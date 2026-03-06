@@ -8,18 +8,16 @@ local LocalPlayer = Players.LocalPlayer
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/theneutral0ne/wally-modified/refs/heads/main/wally-modified.lua"))()
 
--- Turn on if you need bind diagnostics:
 Library.BindDebug = false
 
 local Flags = {}
 local ScriptFolderName = "WallyPracticalExample"
 
--- All current CreateWindow option fields shown explicitly.
 local WindowOptions = {
     topcolor = Color3.fromRGB(30, 30, 30),
     titlecolor = Color3.fromRGB(255, 255, 255),
 
-    underlinecolor = "rainbow", -- supports Color3 too
+    underlinecolor = "rainbow",
     bgcolor = Color3.fromRGB(35, 35, 35),
     boxcolor = Color3.fromRGB(35, 35, 35),
     btncolor = Color3.fromRGB(25, 25, 25),
@@ -43,9 +41,14 @@ local WindowOptions = {
     titlestrokecolor = Color3.fromRGB(0, 0, 0),
 
     autoscaletext = true,
-    mintextsize = 10,
-    itemspacing = 2, -- spacing (pixels) between methods in each window
-    togglestyle = "checkmark", -- "checkmark" or "fill"
+    mintextsize = 8,
+    width = 230,
+    minwidth = 190,
+    maxwidth = 420,
+    autowidth = true,
+    autowidthpadding = 12,
+    itemspacing = 2,
+    togglestyle = "checkmark",
     toggleoncolor = Color3.fromRGB(0, 255, 140),
     toggleoffcolor = Color3.fromRGB(35, 35, 35),
     persistwindow = true,
@@ -252,7 +255,6 @@ LocalPlayer.CharacterAdded:Connect(function()
     RefreshEspForAllPlayers()
 end)
 
--- MAIN WINDOW
 MainWindow:Section("Movement")
 
 local MovementToggle = MainWindow:Toggle("Movement Enabled", {
@@ -271,6 +273,7 @@ local WalkSpeedSlider = MainWindow:Slider("Walk Speed", {
     default = 16,
     precise = true,
     decimals = 1,
+    valueWidth = 44,
 }, function()
     ApplyMovement()
 end)
@@ -321,6 +324,7 @@ local EspLineThicknessSlider = MainWindow:Slider("ESP Line Thickness", {
     default = 0.03,
     precise = true,
     decimals = 3,
+    valueWidth = 52,
 }, function()
     RefreshEspForAllPlayers()
 end)
@@ -398,7 +402,6 @@ local function ApplyFlagsToControls()
     end
 end
 
--- UTILITY WINDOW
 UtilityWindow:Section("Status")
 
 local BuildLabel = UtilityWindow:Label("Build: " .. tostring(Library.Build), {
@@ -478,6 +481,15 @@ UtilityWindow:Button("Show Level Notifications", function()
     StateLabel:Refresh("State: Sent level notifications")
 end)
 
+UtilityWindow:Button("Suspend Callbacks (1s)", function()
+    Library:SuspendCallbacks(true)
+    StateLabel:Refresh("State: Callbacks suspended for 1 second")
+    task.delay(1, function()
+        Library:SuspendCallbacks(false)
+        StateLabel:Refresh("State: Callbacks resumed")
+    end)
+end)
+
 local ReapplyEspButton = UtilityWindow:Button("Reapply ESP", function()
     ApplyMovement()
     RefreshEspForAllPlayers()
@@ -489,28 +501,33 @@ UtilityWindow:Button("Call Reapply via :Fire()", function()
 end)
 
 UtilityWindow:Button("Apply Demo Preset", function()
-    MovementToggle:Set(true)
-    BoxEspToggle:Set(true)
+    Library:BatchUpdate(function()
+        MovementToggle:Set(true)
+        BoxEspToggle:Set(true)
 
-    WalkSpeedSlider:Set(42)
-    EspLineThicknessSlider:Set(0.05)
+        WalkSpeedSlider:Set(42)
+        EspLineThicknessSlider:Set(0.05)
 
-    EspModeDropdown:Set("All", true)
+        EspModeDropdown:Set("All", true)
 
-    EspColorPicker:Set(Color3.fromRGB(80, 170, 255), true)
-    EspColorPicker:SetTransparency(0.35, true)
+        EspColorPicker:Set(Color3.fromRGB(80, 170, 255), true)
+        EspColorPicker:SetTransparency(0.35, true)
 
-    local H, S, V = EspColorPicker:GetHSV()
-    EspColorPicker:SetHSV(H, S, math.clamp(V * 0.9, 0, 1), true)
+        local H, S, V = EspColorPicker:GetHSV()
+        EspColorPicker:SetHSV(H, S, math.clamp(V * 0.9, 0, 1), true)
 
-    local Alpha = EspColorPicker:GetAlpha()
-    EspColorPicker:SetAlpha(Alpha, true)
+        local Alpha = EspColorPicker:GetAlpha()
+        EspColorPicker:SetAlpha(Alpha, true)
 
-    EspIgnoredPlayersApi:Clear(false)
-    EspIgnoredPlayersApi:SetMany({"Nobody"}, false, false)
+        EspIgnoredPlayersApi:Clear(false)
+        EspIgnoredPlayersApi:SetMany({"Nobody"}, false, false)
 
-    RefreshTeleportSearch(GetOtherPlayerNames())
-    TeleportSearchBox.Text = ""
+        RefreshTeleportSearch(GetOtherPlayerNames())
+        TeleportSearchBox.Text = ""
+    end, {
+        suspendCallbacks = true,
+        refreshDependencies = true,
+    })
 
     BuildLabel:SetBackground(Color3.fromRGB(30, 45, 35))
     BuildLabel:SetColor(Color3.fromRGB(170, 255, 200))
@@ -572,7 +589,6 @@ UtilityWindow:Button("Box Return Demo (Set JumpPower TextBox)", function()
     StateLabel:Refresh("State: JumpPower set through Box return object")
 end)
 
--- ADVANCED WINDOW (new API showcase)
 local AdvancedWindow = Library:CreateWindow("Wally Practical - Advanced", WindowOptions)
 local GeneralTab = AdvancedWindow:CreateTab("General")
 local AdvancedTab = AdvancedWindow:CreateTab("Advanced")
@@ -598,6 +614,7 @@ local AdvancedStrengthSlider = GeneralTab:Slider("Advanced Strength", {
     min = 0,
     max = 100,
     default = 50,
+    valueWidth = 44,
     tooltip = "Only enabled when Advanced Controls Enabled is true.",
     enabledWhen = {
         flag = "AdvancedControlsEnabled",
