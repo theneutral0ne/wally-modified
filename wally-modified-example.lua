@@ -42,14 +42,6 @@ local WindowOptions = {
 
     autoscaletext = true,
     mintextsize = 8,
-    width = 230,
-    minwidth = 190,
-    maxwidth = 420,
-    resizable = true,
-    resizeMinWidth = 190,
-    resizeMaxWidth = 420,
-    autowidth = true,
-    autowidthpadding = 12,
     itemspacing = 2,
     togglestyle = "checkmark",
     toggleoncolor = Color3.fromRGB(0, 255, 140),
@@ -89,22 +81,37 @@ local function GetLocalPlayerThumbnail()
     return "rbxassetid://0"
 end
 
-local ImagePreviewWindow = Library:CreateImagePreviewWindow("Wally Practical - Image Preview", {
-    windowOptions = WindowOptions,
-    windowWidth = 260,
-    windowMinWidth = 220,
-    windowMaxWidth = 360,
-    resizable = true,
-    persistwindow = true,
-    image = GetLocalPlayerThumbnail(),
-    caption = "LocalPlayer Headshot Preview",
-    previewHeight = 190,
-    scaleType = Enum.ScaleType.Fit,
-    backgroundColor = Color3.fromRGB(20, 20, 20),
-    borderColor = Color3.fromRGB(65, 65, 65),
-})
-ImagePreviewWindow:SetVisible(false)
+local ImagePreviewWindow
+local function EnsureImagePreviewWindow()
+    if ImagePreviewWindow and ImagePreviewWindow.Window and ImagePreviewWindow.Window.object and ImagePreviewWindow.Window.object.Parent then
+        return ImagePreviewWindow
+    end
 
+    local Ok, Result = pcall(function()
+        local PreviewWindow = Library:CreateImagePreviewWindow("Wally Practical - Image Preview", {
+            windowOptions = WindowOptions,
+            persistwindow = true,
+            image = GetLocalPlayerThumbnail(),
+            caption = "LocalPlayer Headshot Preview",
+            previewHeight = 190,
+            scaleType = Enum.ScaleType.Fit,
+            backgroundColor = Color3.fromRGB(20, 20, 20),
+            borderColor = Color3.fromRGB(65, 65, 65),
+        })
+        if PreviewWindow and PreviewWindow.SetVisible then
+            PreviewWindow:SetVisible(false)
+        end
+        return PreviewWindow
+    end)
+
+    if not Ok then
+        warn("[Wally Modified Example] Image preview init failed:", Result)
+        return nil
+    end
+
+    ImagePreviewWindow = Result
+    return ImagePreviewWindow
+end
 local function ColorToRgbText(ColorValue)
     return string.format(
         "%d, %d, %d",
@@ -516,41 +523,65 @@ local PreviewImageSourceBox = UtilityWindow:Box("Preview Image Source", {
 })
 
 UtilityWindow:Button("Apply Preview Image Source", function()
+    local PreviewWindow = EnsureImagePreviewWindow()
+    if not PreviewWindow then
+        StateLabel:Refresh("State: Preview window unavailable")
+        return
+    end
+
     local SourceValue = tostring(Flags.PreviewImageSource or "")
     if SourceValue == "" then
         SourceValue = "rbxassetid://0"
     end
-    ImagePreviewWindow:SetImage(SourceValue)
-    ImagePreviewWindow:SetCaption("Custom Source: " .. SourceValue)
-    ImagePreviewWindow:SetVisible(true)
-    ImagePreviewWindow:BringToFront()
+    PreviewWindow:SetImage(SourceValue)
+    PreviewWindow:SetCaption("Custom Source: " .. SourceValue)
+    PreviewWindow:SetVisible(true)
+    PreviewWindow:BringToFront()
     StateLabel:Refresh("State: Applied preview source")
 end)
 
 UtilityWindow:Button("Use LocalPlayer Thumbnail", function()
+    local PreviewWindow = EnsureImagePreviewWindow()
+    if not PreviewWindow then
+        StateLabel:Refresh("State: Preview window unavailable")
+        return
+    end
+
     local Thumbnail = GetLocalPlayerThumbnail()
     Flags.PreviewImageSource = Thumbnail
     PreviewImageSourceBox:Set(Thumbnail, false)
-    ImagePreviewWindow:SetImage(Thumbnail)
-    ImagePreviewWindow:SetCaption(LocalPlayer.Name .. " Headshot")
-    ImagePreviewWindow:SetVisible(true)
-    ImagePreviewWindow:BringToFront()
+    PreviewWindow:SetImage(Thumbnail)
+    PreviewWindow:SetCaption(LocalPlayer.Name .. " Headshot")
+    PreviewWindow:SetVisible(true)
+    PreviewWindow:BringToFront()
     StateLabel:Refresh("State: Loaded LocalPlayer thumbnail")
 end)
 
 UtilityWindow:Button("Toggle Preview Window", function()
-    local NextVisible = not ImagePreviewWindow:IsVisible()
-    ImagePreviewWindow:SetVisible(NextVisible)
+    local PreviewWindow = EnsureImagePreviewWindow()
+    if not PreviewWindow then
+        StateLabel:Refresh("State: Preview window unavailable")
+        return
+    end
+
+    local NextVisible = not PreviewWindow:IsVisible()
+    PreviewWindow:SetVisible(NextVisible)
     if NextVisible then
-        ImagePreviewWindow:BringToFront()
+        PreviewWindow:BringToFront()
     end
     StateLabel:Refresh("State: Image preview visible = " .. tostring(NextVisible))
 end)
 
 UtilityWindow:Button("Center Preview Window", function()
-    ImagePreviewWindow:SetVisible(true)
-    ImagePreviewWindow:Center()
-    ImagePreviewWindow:BringToFront()
+    local PreviewWindow = EnsureImagePreviewWindow()
+    if not PreviewWindow then
+        StateLabel:Refresh("State: Preview window unavailable")
+        return
+    end
+
+    PreviewWindow:SetVisible(true)
+    PreviewWindow:Center()
+    PreviewWindow:BringToFront()
     StateLabel:Refresh("State: Centered image preview window")
 end)
 
