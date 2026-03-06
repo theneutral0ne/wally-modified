@@ -19,7 +19,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-06.58",
+    Build = "2026-03-06.59",
     BindDebug = false,
     CallbackSuspendDepth = 0,
     BatchUpdateDepth = 0,
@@ -7935,7 +7935,9 @@ local Defaults; do
         local PreviewCamera = Instance.new("Camera");
         PreviewCamera.Name = "PreviewCamera";
         PreviewCamera.FieldOfView = CameraFov;
-        PreviewCamera.NearPlaneZ = CameraNearPlane;
+        pcall(function()
+            PreviewCamera.NearPlaneZ = CameraNearPlane;
+        end);
         PreviewCamera.Parent = Viewport;
         Viewport.CurrentCamera = PreviewCamera;
 
@@ -8036,16 +8038,68 @@ local Defaults; do
             CurrentModelSource = nil;
         end
 
+        local function CloneSourceForPreview(SourceInstance)
+            if typeof(SourceInstance) ~= "Instance" then
+                return nil, "source must be an Instance";
+            end
+
+            local Changed = {};
+            local function EnsureArchivable(Target)
+                if typeof(Target) ~= "Instance" then
+                    return;
+                end
+
+                local OkRead, OldValue = pcall(function()
+                    return Target.Archivable;
+                end);
+                if (not OkRead) or OldValue == true then
+                    return;
+                end
+
+                local OkSet = pcall(function()
+                    Target.Archivable = true;
+                end);
+                if OkSet then
+                    table.insert(Changed, {
+                        Instance = Target;
+                        OldValue = OldValue;
+                    });
+                end
+            end
+
+            EnsureArchivable(SourceInstance);
+            for _, Descendant in next, SourceInstance:GetDescendants() do
+                EnsureArchivable(Descendant);
+            end
+
+            local OkClone, CloneResult = pcall(function()
+                return SourceInstance:Clone();
+            end);
+
+            for Index = #Changed, 1, -1 do
+                local Entry = Changed[Index];
+                if Entry and Entry.Instance then
+                    pcall(function()
+                        Entry.Instance.Archivable = (Entry.OldValue == true);
+                    end);
+                end
+            end
+
+            if not OkClone then
+                return nil, "failed to clone source: " .. tostring(CloneResult);
+            end
+
+            return CloneResult;
+        end
+
         local function BuildPreviewModel(SourceInstance)
             if typeof(SourceInstance) ~= "Instance" then
                 return nil, "source must be an Instance";
             end
 
-            local OkClone, SourceClone = pcall(function()
-                return SourceInstance:Clone();
-            end);
-            if (not OkClone) or (not SourceClone) then
-                return nil, "failed to clone source (check Archivable)";
+            local SourceClone, CloneError = CloneSourceForPreview(SourceInstance);
+            if not SourceClone then
+                return nil, CloneError or "failed to clone source";
             end
 
             local RootModel = Instance.new("Model");
