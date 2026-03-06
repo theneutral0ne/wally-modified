@@ -18,7 +18,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-06.49",
+    Build = "2026-03-06.50",
     BindDebug = false
 };
 local Defaults; do
@@ -110,7 +110,7 @@ local Defaults; do
                 Library:Create('TextLabel', {
                     Name = "window_title";
                     Text = Name;
-                    Size = UDim2.new(1, -45, 1, 0);
+                    Size = UDim2.new(1, -70, 1, 0);
                     Position = UDim2.new(0, 5, 0, 0);
                     BackgroundTransparency = 1;
                     TextXAlignment = Enum.TextXAlignment.Left;
@@ -120,6 +120,9 @@ local Defaults; do
                     TextColor3 = Options.titletextcolor;
                     TextStrokeTransparency = Library.Options.titlestroke;
                     TextStrokeColor3 = Library.Options.titlestrokecolor;
+                    TextScaled = false;
+                    TextWrapped = false;
+                    TextTruncate = Enum.TextTruncate.AtEnd;
                     ZIndex = 3;
                 });
                 Library:Create("TextButton", {
@@ -133,6 +136,7 @@ local Defaults; do
                     TextColor3 = Options.titletextcolor;
                     TextStrokeTransparency = Library.Options.titlestroke;
                     TextStrokeColor3 = Library.Options.titlestrokecolor;
+                    TextScaled = false;
                     ZIndex = 3;
                 });
                 Library:Create("Frame", {
@@ -787,6 +791,7 @@ local Defaults; do
             local HostFrame = Library:Create("Frame", {
                 Name = "TabHost";
                 BackgroundTransparency = 1;
+                BorderSizePixel = 0;
                 Size = UDim2.new(1, 0, 0, HeaderHeight + 4);
                 LayoutOrder = Owner:GetOrder();
                 Parent = Owner.container;
@@ -820,15 +825,43 @@ local Defaults; do
             Owner.Tabs = Owner.Tabs or {};
             Owner.ActiveTab = Owner.ActiveTab or nil;
 
+            if Owner.TabHeader then
+                Owner.TabHeader:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+                    if type(Owner.RefreshTabHostSize) == "function" then
+                        Owner:RefreshTabHostSize();
+                    end
+                end);
+            end
+
             function Owner:RefreshTabHostSize()
                 if (not self.TabHost) or (not self.TabHost.Parent) then
                     return;
                 end
 
                 local ContentHeight = 0;
+                local TabCount = #self.Tabs;
+                local HeaderWidth = (self.TabHeader and self.TabHeader.AbsoluteSize.X) or 0;
+                local HeaderList = self.TabHeader and self.TabHeader:FindFirstChild("List");
+                local HeaderPadding = 2;
+                if HeaderList and HeaderList:IsA("UIListLayout") then
+                    HeaderPadding = HeaderList.Padding.Offset;
+                end
+                local EvenWidth = 0;
+                if TabCount > 1 and HeaderWidth > 0 then
+                    local Available = HeaderWidth - ((TabCount - 1) * HeaderPadding);
+                    EvenWidth = math.max(48, math.floor((Available / TabCount) + 0.5));
+                end
                 for _, Entry in next, self.Tabs do
                     local IsActive = (self.ActiveTab == Entry);
                     if Entry.Button and Entry.Button.Parent then
+                        if TabCount == 1 then
+                            Entry.Button.Size = UDim2.new(1, 0, 1, 0);
+                        elseif EvenWidth > 0 then
+                            Entry.Button.Size = UDim2.new(0, EvenWidth, 1, 0);
+                        else
+                            local AutoWidth = math.clamp((string.len(tostring(Entry.Name or "")) * 7) + 22, 50, 170);
+                            Entry.Button.Size = UDim2.new(0, AutoWidth, 1, 0);
+                        end
                         Entry.Button.BackgroundColor3 = (IsActive and self.options.btncolor or self.options.dropcolor);
                         Entry.Button.TextColor3 = self.options.textcolor;
                     end
@@ -903,6 +936,9 @@ local Defaults; do
                 TextStrokeColor3 = self.options.strokecolor;
                 Font = self.options.font;
                 TextSize = self.options.fontsize;
+                TextScaled = false;
+                TextWrapped = false;
+                TextTruncate = Enum.TextTruncate.AtEnd;
                 Parent = Header;
                 LayoutOrder = #self.Tabs + 1;
             });
@@ -1125,7 +1161,7 @@ local Defaults; do
                 Size = UDim2.new(1, 0, 0, 25);
                 LayoutOrder = self:GetOrder();
                 Library:Create('TextLabel', {
-                    Name = Name;
+                    Name = 'Title';
                     Text = "\r" .. Name;
                     BackgroundTransparency = 1;
                     TextColor3 = InitialOptions.textcolor;
@@ -1136,25 +1172,29 @@ local Defaults; do
                     TextSize = InitialOptions.fontsize;
                     TextStrokeTransparency = InitialOptions.textstroke;
                     TextStrokeColor3 = InitialOptions.strokecolor;
-                    Library:Create('TextButton', {
-                        Text = "";
-                        Font = InitialOptions.font;
-                        TextSize = InitialOptions.fontsize;
-                        Name = 'Checkmark';
-                        Size = UDim2.new(0, 20, 0, 20);
-                        Position = UDim2.new(1, -25, 0, 4);
-                        TextColor3 = InitialOptions.textcolor;
-                        BackgroundColor3 = InitialOptions.bgcolor;
-                        BorderColor3 = InitialOptions.bordercolor;
-                        TextStrokeTransparency = InitialOptions.textstroke;
-                        TextStrokeColor3 = InitialOptions.strokecolor;
-                    })
+                    TextScaled = false;
+                    TextWrapped = false;
+                    TextTruncate = Enum.TextTruncate.AtEnd;
+                });
+                Library:Create('TextButton', {
+                    Text = "";
+                    Font = InitialOptions.font;
+                    TextSize = InitialOptions.fontsize;
+                    Name = 'Checkmark';
+                    Size = UDim2.new(0, 20, 0, 20);
+                    Position = UDim2.new(1, -25, 0, 4);
+                    TextColor3 = InitialOptions.textcolor;
+                    BackgroundColor3 = InitialOptions.bgcolor;
+                    BorderColor3 = InitialOptions.bordercolor;
+                    TextStrokeTransparency = InitialOptions.textstroke;
+                    TextStrokeColor3 = InitialOptions.strokecolor;
+                    TextScaled = false;
                 });
                 Parent = self.container;
             });
 
-            local ToggleLabel = CheckData:FindFirstChild(Name);
-            local ToggleButton = CheckData:FindFirstChild(Name).Checkmark;
+            local ToggleLabel = CheckData:FindFirstChild("Title");
+            local ToggleButton = CheckData:FindFirstChild("Checkmark");
             local function UpdateVisualState()
                 local ActiveOptions, IsFillStyle, FillOnColor, FillOffColor = ResolveToggleTheme();
 
@@ -1294,36 +1334,40 @@ local Defaults; do
                 Size = UDim2.new(1, 0, 0, 25);
                 LayoutOrder = self:GetOrder();
                 Library:Create('TextLabel', {
-                    Name = Name;
+                    Name = "Title";
                     Text = "\r" .. Name;
                     BackgroundTransparency = 1;
                     TextColor3 = Library.Options.textcolor;
                     TextStrokeTransparency = Library.Options.textstroke;
                     TextStrokeColor3 = Library.Options.strokecolor;
                     Position = UDim2.new(0, 5, 0, 0);
-                    Size     = UDim2.new(1, -70, 1, 0);
+                    Size     = UDim2.new(1, -72, 1, 0);
                     TextXAlignment = Enum.TextXAlignment.Left;
                     Font = Library.Options.font;
                     TextSize = Library.Options.fontsize;
-                    Library:Create('TextBox', {
-                        TextStrokeTransparency = Library.Options.textstroke;
-                        TextStrokeColor3 = Library.Options.strokecolor;
-                        Text = tostring(Default);
-                        Font = Library.Options.font;
-                        TextSize = Library.Options.fontsize;
-                        Name = 'Box';
-                        Size = UDim2.new(0, 60, 0, 20);
-                        Position = UDim2.new(1, -65, 0, 3);
-                        TextColor3 = Library.Options.textcolor;
-                        BackgroundColor3 = Library.Options.boxcolor;
-                        BorderColor3 = Library.Options.bordercolor;
-                        PlaceholderColor3 = Library.Options.placeholdercolor;
-                    })
+                    TextScaled = false;
+                    TextWrapped = false;
+                    TextTruncate = Enum.TextTruncate.AtEnd;
+                });
+                Library:Create('TextBox', {
+                    TextStrokeTransparency = Library.Options.textstroke;
+                    TextStrokeColor3 = Library.Options.strokecolor;
+                    Text = tostring(Default);
+                    Font = Library.Options.font;
+                    TextSize = Library.Options.fontsize;
+                    Name = 'Box';
+                    Size = UDim2.new(0, 60, 0, 20);
+                    Position = UDim2.new(1, -65, 0, 3);
+                    TextColor3 = Library.Options.textcolor;
+                    BackgroundColor3 = Library.Options.boxcolor;
+                    BorderColor3 = Library.Options.bordercolor;
+                    PlaceholderColor3 = Library.Options.placeholdercolor;
+                    TextScaled = false;
                 });
                 Parent = self.container;
             });
         
-            local BoxData = CheckData:FindFirstChild(Name):FindFirstChild('Box');
+            local BoxData = CheckData:FindFirstChild('Box');
 
             local function SetBoxValue(NewValue, FireCallback, EventData)
                 local Old = Location[Flag];
@@ -1629,12 +1673,12 @@ local Defaults; do
                 Size = UDim2.new(1, 0, 0, 30);
                 LayoutOrder = self:GetOrder();
                 Library:Create('TextLabel', {
-                    Name = Name;
+                    Name = "Title";
                     Text = "\r" .. Name;
                     BackgroundTransparency = 1;
                     TextColor3 = Library.Options.textcolor;
                     Position = UDim2.new(0, 5, 0, 0);
-                    Size     = UDim2.new(1, -70, 1, 0);
+                    Size     = UDim2.new(1, -72, 1, 0);
                     TextXAlignment = Enum.TextXAlignment.Left;
                     Font = Library.Options.font;
                     TextSize = Library.Options.fontsize;
@@ -1642,25 +1686,29 @@ local Defaults; do
                     TextStrokeColor3 = Library.Options.strokecolor;
                     BorderColor3     = Library.Options.bordercolor;
                     BorderSizePixel  = 1;
-                    Library:Create('TextButton', {
-                        Name = 'Keybind';
-                        Text = DisplayName;
-                        TextStrokeTransparency = Library.Options.textstroke;
-                        TextStrokeColor3 = Library.Options.strokecolor;
-                        Font = Library.Options.font;
-                        TextSize = Library.Options.fontsize;
-                        Size = UDim2.new(0, 60, 0, 20);
-                        Position = UDim2.new(1, -65, 0, 5);
-                        TextColor3 = Library.Options.textcolor;
-                        BackgroundColor3 = Library.Options.bgcolor;
-                        BorderColor3     = Library.Options.bordercolor;
-                        BorderSizePixel  = 1;
-                    })
+                    TextScaled = false;
+                    TextWrapped = false;
+                    TextTruncate = Enum.TextTruncate.AtEnd;
+                });
+                Library:Create('TextButton', {
+                    Name = 'Keybind';
+                    Text = DisplayName;
+                    TextStrokeTransparency = Library.Options.textstroke;
+                    TextStrokeColor3 = Library.Options.strokecolor;
+                    Font = Library.Options.font;
+                    TextSize = Library.Options.fontsize;
+                    Size = UDim2.new(0, 60, 0, 20);
+                    Position = UDim2.new(1, -65, 0, 5);
+                    TextColor3 = Library.Options.textcolor;
+                    BackgroundColor3 = Library.Options.bgcolor;
+                    BorderColor3     = Library.Options.bordercolor;
+                    BorderSizePixel  = 1;
+                    TextScaled = false;
                 });
                 Parent = self.container;
             });
              
-            local ButtonData = CheckData:FindFirstChild(Name).Keybind;
+            local ButtonData = CheckData:FindFirstChild("Keybind");
             ButtonData.MouseButton1Click:Connect(function()
                 Library.Binding = true
 
@@ -2043,15 +2091,18 @@ local Defaults; do
                     TextSize = Library.Options.fontsize;
                     TextStrokeTransparency = Library.Options.textstroke;
                     TextStrokeColor3 = Library.Options.strokecolor;
-                    Library:Create('TextButton', {
-                        Name = 'Preview';
-                        Text = "";
-                        AutoButtonColor = false;
-                        Size = UDim2.new(0, 22, 0, 14);
-                        Position = UDim2.new(1, -28, 0, 4);
-                        BackgroundColor3 = Default;
-                        BorderColor3 = Library.Options.bordercolor;
-                    });
+                    TextScaled = false;
+                    TextWrapped = false;
+                    TextTruncate = Enum.TextTruncate.AtEnd;
+                });
+                Library:Create('TextButton', {
+                    Name = 'Preview';
+                    Text = "";
+                    AutoButtonColor = false;
+                    Size = UDim2.new(0, 22, 0, 14);
+                    Position = UDim2.new(1, -28, 0, 4);
+                    BackgroundColor3 = Default;
+                    BorderColor3 = Library.Options.bordercolor;
                 });
                 Parent = self.container;
             });
@@ -2286,8 +2337,7 @@ local Defaults; do
                 Parent = PopupData;
             });
 
-            local Title = CheckData:FindFirstChild("Title");
-            local Preview = Title and Title:FindFirstChild("Preview");
+            local Preview = CheckData:FindFirstChild("Preview");
             local WheelContainer = PopupData:FindFirstChild("WheelContainer");
             local Wheel = WheelContainer and WheelContainer:FindFirstChild("Wheel");
             local Selector = Wheel and Wheel:FindFirstChild("Selector");
@@ -2874,6 +2924,9 @@ local Defaults; do
                         TextXAlignment = Enum.TextXAlignment.Left;
                         Font = Library.Options.font;
                         TextSize = Library.Options.fontsize;
+                        TextScaled = false;
+                        TextWrapped = false;
+                        TextTruncate = Enum.TextTruncate.AtEnd;
                     });
                     Library:Create('Frame', {
                         Name = 'Container';
@@ -2892,6 +2945,8 @@ local Defaults; do
                             Font = Library.Options.font;
                             TextSize = Library.Options.fontsize;
                             TextScaled = false;
+                            TextWrapped = false;
+                            TextTruncate = Enum.TextTruncate.AtEnd;
                             TextStrokeTransparency = Library.Options.textstroke;
                             TextStrokeColor3 = Library.Options.strokecolor;
                         });
@@ -3212,6 +3267,9 @@ local Defaults; do
                         TextXAlignment = Enum.TextXAlignment.Left;
                         Font = Library.Options.font;
                         TextSize = Library.Options.fontsize;
+                        TextScaled = false;
+                        TextWrapped = false;
+                        TextTruncate = Enum.TextTruncate.AtEnd;
                         TextStrokeTransparency = Library.Options.textstroke;
                         TextStrokeColor3 = Library.Options.strokecolor;
                     });
@@ -3558,6 +3616,9 @@ local Defaults; do
                     TextColor3 = Library.Options.textcolor;
                     TextStrokeTransparency = Library.Options.textstroke;
                     TextStrokeColor3 = Library.Options.strokecolor;
+                    TextScaled = false;
+                    TextWrapped = false;
+                    TextTruncate = Enum.TextTruncate.AtEnd;
                 });
                 Library:Create('TextButton', {
                     Name = 'SelectAll';
