@@ -18,7 +18,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-06.55",
+    Build = "2026-03-06.57",
     BindDebug = false,
     CallbackSuspendDepth = 0,
     BatchUpdateDepth = 0,
@@ -335,16 +335,13 @@ local Defaults; do
                     return false;
                 end
 
-                local Base = math.max(tonumber(Library.ZIndexCounter) or 30, 30) + 10;
-                Library.ZIndexCounter = Base;
-
-                self.object.ZIndex = Base;
-                for _, Descendant in next, self.object:GetDescendants() do
-                    if Descendant:IsA("GuiObject") then
-                        local Relative = math.max((tonumber(Descendant.ZIndex) or 0) - 3, 0);
-                        Descendant.ZIndex = Base + Relative;
-                    end
-                end
+                local ParentObject = self.object.Parent;
+                local CurrentPosition = self.object.Position;
+                local CurrentSize = self.object.Size;
+                self.object.Parent = nil;
+                self.object.Parent = ParentObject;
+                self.object.Position = CurrentPosition;
+                self.object.Size = CurrentSize;
                 return true;
             end
 
@@ -4740,6 +4737,7 @@ local Defaults; do
     
     function Library:Create(ClassName, Data)
         local Obj = Instance.new(ClassName);
+        local ParentObject = Data.Parent;
         for Index, ValueData in next, Data do
             if Index ~= 'Parent' then
                 
@@ -4783,7 +4781,7 @@ local Defaults; do
             end
         end
         
-        Obj.Parent = Data.Parent;
+        Obj.Parent = ParentObject;
         return Obj
     end
 
