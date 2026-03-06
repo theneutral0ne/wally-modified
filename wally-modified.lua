@@ -18,7 +18,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-06.50",
+    Build = "2026-03-06.51",
     BindDebug = false
 };
 local Defaults; do
@@ -120,7 +120,7 @@ local Defaults; do
                     TextColor3 = Options.titletextcolor;
                     TextStrokeTransparency = Library.Options.titlestroke;
                     TextStrokeColor3 = Library.Options.titlestrokecolor;
-                    TextScaled = false;
+                    TextScaled = true;
                     TextWrapped = false;
                     TextTruncate = Enum.TextTruncate.AtEnd;
                     ZIndex = 3;
@@ -1172,7 +1172,7 @@ local Defaults; do
                     TextSize = InitialOptions.fontsize;
                     TextStrokeTransparency = InitialOptions.textstroke;
                     TextStrokeColor3 = InitialOptions.strokecolor;
-                    TextScaled = false;
+                    TextScaled = true;
                     TextWrapped = false;
                     TextTruncate = Enum.TextTruncate.AtEnd;
                 });
@@ -1345,7 +1345,7 @@ local Defaults; do
                     TextXAlignment = Enum.TextXAlignment.Left;
                     Font = Library.Options.font;
                     TextSize = Library.Options.fontsize;
-                    TextScaled = false;
+                    TextScaled = true;
                     TextWrapped = false;
                     TextTruncate = Enum.TextTruncate.AtEnd;
                 });
@@ -1686,7 +1686,7 @@ local Defaults; do
                     TextStrokeColor3 = Library.Options.strokecolor;
                     BorderColor3     = Library.Options.bordercolor;
                     BorderSizePixel  = 1;
-                    TextScaled = false;
+                    TextScaled = true;
                     TextWrapped = false;
                     TextTruncate = Enum.TextTruncate.AtEnd;
                 });
@@ -2091,7 +2091,7 @@ local Defaults; do
                     TextSize = Library.Options.fontsize;
                     TextStrokeTransparency = Library.Options.textstroke;
                     TextStrokeColor3 = Library.Options.strokecolor;
-                    TextScaled = false;
+                    TextScaled = true;
                     TextWrapped = false;
                     TextTruncate = Enum.TextTruncate.AtEnd;
                 });
@@ -2889,6 +2889,10 @@ local Defaults; do
             local Location = Options.location or self.flags;
             local Precise  = Options.precise  or false
             local Decimals = math.clamp(math.floor(tonumber(Options.decimals) or 2), 0, 6);
+            local SliderValueWidth = math.clamp(math.floor((tonumber(Options.valueWidth or Options.valuewidth or Options.valueLabelWidth) or 40) + 0.5), 24, 80);
+            local SliderTrackInset = SliderValueWidth + 2;
+            local SliderContainerWidth = math.clamp(SliderTrackInset + 36, 58, 140);
+            local SliderTitleRightPadding = SliderContainerWidth + 8;
             local Flag     = self:ResolveFlag(Options.flag, Name, "Slider");
             local Callback = Callback or function() end
 
@@ -2920,18 +2924,18 @@ local Defaults; do
                         BackgroundTransparency = 1;
                         TextColor3 = Library.Options.textcolor;
                         Position = UDim2.new(0, 0, 0, 0);
-                        Size     = UDim2.new(1, -95, 1, 0);
+                        Size     = UDim2.new(1, -SliderTitleRightPadding, 1, 0);
                         TextXAlignment = Enum.TextXAlignment.Left;
                         Font = Library.Options.font;
                         TextSize = Library.Options.fontsize;
-                        TextScaled = false;
+                        TextScaled = true;
                         TextWrapped = false;
                         TextTruncate = Enum.TextTruncate.AtEnd;
                     });
                     Library:Create('Frame', {
                         Name = 'Container';
-                        Size = UDim2.new(0, 60, 0, 20);
-                        Position = UDim2.new(1, -65, 0, 3);
+                        Size = UDim2.new(0, SliderContainerWidth, 0, 20);
+                        Position = UDim2.new(1, -(SliderContainerWidth + 5), 0, 3);
                         BackgroundTransparency = 1;
                         BorderSizePixel = 0;
                         Library:Create('TextLabel', {
@@ -2940,7 +2944,7 @@ local Defaults; do
                             BackgroundTransparency = 1;
                             TextColor3 = Library.Options.textcolor;
                             Position = UDim2.new(0, 0, 0, 0);
-                            Size     = UDim2.new(0, 22, 1, 0);
+                            Size     = UDim2.new(0, SliderValueWidth, 1, 0);
                             TextXAlignment = Enum.TextXAlignment.Right;
                             Font = Library.Options.font;
                             TextSize = Library.Options.fontsize;
@@ -2953,7 +2957,7 @@ local Defaults; do
                         Library:Create('TextButton', {
                             Name = 'Button';
                             Size = UDim2.new(0, 5, 1, -2);
-                            Position = UDim2.new(0, 24, 0, 1);
+                            Position = UDim2.new(0, SliderTrackInset, 0, 1);
                             AutoButtonColor = false;
                             Text = "";
                             BackgroundColor3 = Color3.fromRGB(20, 20, 20);
@@ -2965,8 +2969,8 @@ local Defaults; do
                         Library:Create('Frame', {
                             Name = 'Line';
                             BackgroundTransparency = 0;
-                            Position = UDim2.new(0, 24, 0.5, 0);
-                            Size     = UDim2.new(1, -24, 0, 1);
+                            Position = UDim2.new(0, SliderTrackInset, 0.5, 0);
+                            Size     = UDim2.new(1, -SliderTrackInset, 0, 1);
                             BackgroundColor3 = Library.Options.textcolor;
                             BorderSizePixel = 0;
                         });
@@ -2983,7 +2987,7 @@ local Defaults; do
             local Dragging = false;
             local CurrentValue;
             local PrecisionFactor = 10 ^ Decimals;
-            local TrackInset = 24;
+            local TrackInset = SliderTrackInset;
 
             local function NormalizeValue(Raw)
                 local Value = math.clamp(tonumber(Raw) or Min, Min, Max);
@@ -3616,7 +3620,7 @@ local Defaults; do
                     TextColor3 = Library.Options.textcolor;
                     TextStrokeTransparency = Library.Options.textstroke;
                     TextStrokeColor3 = Library.Options.strokecolor;
-                    TextScaled = false;
+                    TextScaled = true;
                     TextWrapped = false;
                     TextTruncate = Enum.TextTruncate.AtEnd;
                 });
