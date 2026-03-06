@@ -4,6 +4,7 @@ local Debris = game:GetService("Debris");
 local CoreGui = game:GetService("CoreGui");
 local HttpService = game:GetService("HttpService");
 local TextService = game:GetService("TextService");
+local Workspace = game:GetService("Workspace");
 
 local Library = {
     Count = 0,
@@ -18,7 +19,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-06.57",
+    Build = "2026-03-06.58",
     BindDebug = false,
     CallbackSuspendDepth = 0,
     BatchUpdateDepth = 0,
@@ -7803,6 +7804,563 @@ local Defaults; do
 
     function Library:ImagePreviewWindow(Name, Options)
         return self:CreateImagePreviewWindow(Name, Options);
+    end
+
+    function Library:CreateModelPreviewWindow(Name, Options)
+        if type(Name) == "table" and Options == nil then
+            Options = Name;
+            Name = nil;
+        end
+
+        Options = Options or {};
+
+        local Title = tostring(Name or Options.title or "Model Preview");
+        local WindowOptions = {};
+        local ActiveOptions = self:GetWindowOptions();
+        if type(ActiveOptions) == "table" then
+            for Key, Value in next, ActiveOptions do
+                WindowOptions[Key] = Value;
+            end
+        end
+        if type(Options.windowOptions) == "table" then
+            for Key, Value in next, Options.windowOptions do
+                WindowOptions[Key] = Value;
+            end
+        end
+
+        local function ApplyWindowOverride(Key, Value)
+            if Value ~= nil then
+                WindowOptions[Key] = Value;
+            end
+        end
+
+        local function ResolveOption(...)
+            local Values = {...};
+            for Index = 1, select("#", ...) do
+                if Values[Index] ~= nil then
+                    return Values[Index];
+                end
+            end
+            return nil;
+        end
+
+        ApplyWindowOverride("itemspacing", Options.windowItemSpacing);
+        ApplyWindowOverride("persistwindow", ResolveOption(Options.persistwindow, Options.persistWindow, Options.persist));
+        ApplyWindowOverride("windowPersistence", Options.windowPersistence);
+        ApplyWindowOverride("windowPersistenceOptions", Options.windowPersistenceOptions);
+
+        local PreviousOptions = self.Options;
+        local WindowData = self:CreateWindow(Title, WindowOptions);
+        if PreviousOptions then
+            self.Options = PreviousOptions;
+        end
+        if type(WindowData) ~= "table" or (not WindowData.object) then
+            return nil;
+        end
+
+        local PreviewPadding = math.max(0, math.floor((tonumber(Options.padding) or 5) + 0.5));
+        local PreviewHeight = math.max(96, math.floor((tonumber(Options.previewHeight or Options.height) or 220) + 0.5));
+        local CaptionHeight = math.max(16, math.floor((tonumber(Options.captionHeight) or 20) + 0.5));
+        local CurrentCaption = tostring(Options.caption or "");
+        local CurrentPreviewWidth = tonumber(Options.previewWidth or Options.modelWidth);
+        if CurrentPreviewWidth then
+            CurrentPreviewWidth = math.max(60, math.floor(CurrentPreviewWidth + 0.5));
+        end
+
+        local CurrentModelSource = nil;
+        local CurrentPreviewModel = nil;
+
+        local DragEnabled = (Options.drag ~= false and Options.rotateOnDrag ~= false);
+        local ZoomEnabled = (Options.zoom ~= false);
+        local DragSensitivity = math.clamp(tonumber(Options.dragSensitivity or Options.sensitivity) or 0.35, 0.05, 4);
+        local ZoomSensitivity = math.clamp(tonumber(Options.zoomSensitivity) or 2, 0.1, 25);
+
+        local CurrentYaw = tonumber(Options.yaw);
+        if CurrentYaw == nil then
+            CurrentYaw = 35;
+        end
+        local CurrentPitch = math.clamp(tonumber(Options.pitch) or 15, -85, 85);
+
+        local MinDistance = math.max(1, tonumber(Options.minDistance) or 2);
+        local MaxDistance = math.max(MinDistance + 1, tonumber(Options.maxDistance) or 250);
+        local CurrentDistance = tonumber(Options.distance);
+        if CurrentDistance then
+            CurrentDistance = math.clamp(CurrentDistance, MinDistance, MaxDistance);
+        end
+
+        local CameraFov = math.clamp(tonumber(Options.fov) or 70, 20, 100);
+        local CameraNearPlane = math.clamp(tonumber(Options.nearPlaneZ) or 0.1, 0.01, 8);
+
+        local PreviewRoot = self:Create("Frame", {
+            Name = "ModelPreviewRoot";
+            BackgroundTransparency = 1;
+            Size = UDim2.new(1, 0, 0, 0);
+            LayoutOrder = WindowData:GetOrder();
+            Parent = WindowData.container;
+        });
+
+        local PreviewFrame = self:Create("Frame", {
+            Name = "ModelPreviewFrame";
+            BackgroundColor3 = (typeof(Options.backgroundColor or Options.bgColor) == "Color3" and (Options.backgroundColor or Options.bgColor))
+                or (WindowData.options and WindowData.options.boxcolor)
+                or Library.Options.boxcolor;
+            BorderColor3 = (typeof(Options.borderColor) == "Color3" and Options.borderColor)
+                or (WindowData.options and WindowData.options.bordercolor)
+                or Library.Options.bordercolor;
+            BorderSizePixel = 1;
+            ClipsDescendants = true;
+            Position = UDim2.new(0, PreviewPadding, 0, PreviewPadding);
+            Size = UDim2.new(1, -(PreviewPadding * 2), 0, PreviewHeight);
+            Parent = PreviewRoot;
+        });
+
+        local Viewport = self:Create("ViewportFrame", {
+            Name = "Viewport";
+            BackgroundTransparency = 1;
+            BorderSizePixel = 0;
+            Size = UDim2.new(1, 0, 1, 0);
+            Position = UDim2.new(0, 0, 0, 0);
+            Ambient = (typeof(Options.ambient) == "Color3" and Options.ambient) or Color3.fromRGB(160, 160, 160);
+            LightColor = (typeof(Options.lightColor) == "Color3" and Options.lightColor) or Color3.fromRGB(255, 255, 255);
+            LightDirection = (typeof(Options.lightDirection) == "Vector3" and Options.lightDirection) or Vector3.new(-1, -1, -1);
+            CurrentCamera = nil;
+            Parent = PreviewFrame;
+        });
+        Viewport.Active = true;
+
+        local WorldModel = Instance.new("WorldModel");
+        WorldModel.Name = "World";
+        WorldModel.Parent = Viewport;
+
+        local PreviewCamera = Instance.new("Camera");
+        PreviewCamera.Name = "PreviewCamera";
+        PreviewCamera.FieldOfView = CameraFov;
+        PreviewCamera.NearPlaneZ = CameraNearPlane;
+        PreviewCamera.Parent = Viewport;
+        Viewport.CurrentCamera = PreviewCamera;
+
+        local CaptionLabel = self:Create("TextLabel", {
+            Name = "Caption";
+            BackgroundTransparency = 1;
+            BorderSizePixel = 0;
+            Text = CurrentCaption;
+            TextXAlignment = Enum.TextXAlignment.Left;
+            TextYAlignment = Enum.TextYAlignment.Center;
+            Position = UDim2.new(0, PreviewPadding, 0, PreviewPadding + PreviewHeight + 4);
+            Size = UDim2.new(1, -(PreviewPadding * 2), 0, CaptionHeight);
+            Font = (WindowData.options and WindowData.options.font) or Library.Options.font;
+            TextSize = (WindowData.options and WindowData.options.fontsize) or Library.Options.fontsize;
+            TextColor3 = (WindowData.options and WindowData.options.textcolor) or Library.Options.textcolor;
+            TextStrokeTransparency = (WindowData.options and WindowData.options.textstroke) or Library.Options.textstroke;
+            TextStrokeColor3 = (WindowData.options and WindowData.options.strokecolor) or Library.Options.strokecolor;
+            Visible = (CurrentCaption ~= "");
+            Parent = PreviewRoot;
+        });
+
+        local function GetEffectivePreviewWidth()
+            if CurrentPreviewWidth == nil then
+                return nil;
+            end
+            local Width = math.max(60, math.floor(CurrentPreviewWidth + 0.5));
+            local MaxWidth = math.max(60, ((WindowData:GetWidth() or 190) - (PreviewPadding * 2)));
+            return math.clamp(Width, 60, MaxWidth);
+        end
+
+        local IsUpdatingLayout = false;
+        local function UpdateLayout()
+            if IsUpdatingLayout then
+                return;
+            end
+            IsUpdatingLayout = true;
+            if (not PreviewRoot.Parent) or (not WindowData.object) or (not WindowData.object.Parent) then
+                IsUpdatingLayout = false;
+                return;
+            end
+
+            local CaptionVisible = (CurrentCaption ~= "");
+            local BaseOffsetY = PreviewPadding;
+
+            local EffectiveWidth = GetEffectivePreviewWidth();
+            if EffectiveWidth then
+                local XOffset = math.max(PreviewPadding, math.floor(((WindowData:GetWidth() or (EffectiveWidth + (PreviewPadding * 2))) - EffectiveWidth) * 0.5));
+                PreviewFrame.Size = UDim2.new(0, EffectiveWidth, 0, PreviewHeight);
+                PreviewFrame.Position = UDim2.new(0, XOffset, 0, BaseOffsetY);
+            else
+                PreviewFrame.Size = UDim2.new(1, -(PreviewPadding * 2), 0, PreviewHeight);
+                PreviewFrame.Position = UDim2.new(0, PreviewPadding, 0, BaseOffsetY);
+            end
+
+            local TotalHeight = (PreviewPadding * 2) + PreviewHeight;
+            if CaptionVisible then
+                CaptionLabel.Visible = true;
+                CaptionLabel.Text = CurrentCaption;
+                CaptionLabel.Position = UDim2.new(0, PreviewPadding, 0, BaseOffsetY + PreviewHeight + 4);
+                CaptionLabel.Size = UDim2.new(1, -(PreviewPadding * 2), 0, CaptionHeight);
+                TotalHeight = TotalHeight + CaptionHeight + 2;
+            else
+                CaptionLabel.Visible = false;
+                CaptionLabel.Text = "";
+            end
+
+            PreviewRoot.Size = UDim2.new(1, 0, 0, TotalHeight);
+            WindowData:Resize();
+            IsUpdatingLayout = false;
+        end
+
+        local function ResolveModelSource(Value)
+            if typeof(Value) == "Instance" then
+                return Value;
+            end
+
+            if type(Value) == "string" then
+                local Query = tostring(Value);
+                if Query == "" then
+                    return nil;
+                end
+                local Found = Workspace:FindFirstChild(Query, true);
+                if typeof(Found) == "Instance" then
+                    return Found;
+                end
+            end
+
+            return nil;
+        end
+
+        local function DestroyCurrentModel()
+            if CurrentPreviewModel and CurrentPreviewModel.Parent then
+                pcall(function()
+                    CurrentPreviewModel:Destroy();
+                end);
+            end
+            CurrentPreviewModel = nil;
+            CurrentModelSource = nil;
+        end
+
+        local function BuildPreviewModel(SourceInstance)
+            if typeof(SourceInstance) ~= "Instance" then
+                return nil, "source must be an Instance";
+            end
+
+            local OkClone, SourceClone = pcall(function()
+                return SourceInstance:Clone();
+            end);
+            if (not OkClone) or (not SourceClone) then
+                return nil, "failed to clone source (check Archivable)";
+            end
+
+            local RootModel = Instance.new("Model");
+            RootModel.Name = "PreviewModel";
+            SourceClone.Parent = RootModel;
+
+            local PartCount = 0;
+            for _, Descendant in next, RootModel:GetDescendants() do
+                if Descendant:IsA("BasePart") then
+                    PartCount = PartCount + 1;
+                    pcall(function()
+                        Descendant.Anchored = true;
+                        Descendant.CanCollide = false;
+                        Descendant.CanTouch = false;
+                        Descendant.CanQuery = false;
+                    end);
+                elseif Descendant:IsA("Script") or Descendant:IsA("LocalScript") then
+                    pcall(function()
+                        Descendant.Disabled = true;
+                    end);
+                end
+            end
+
+            if PartCount <= 0 then
+                RootModel:Destroy();
+                return nil, "model has no BasePart descendants";
+            end
+
+            return RootModel;
+        end
+
+        local function GetModelBounds(ModelInstance)
+            if typeof(ModelInstance) ~= "Instance" or (not ModelInstance.Parent) then
+                return CFrame.new(), Vector3.new(4, 4, 4);
+            end
+
+            local OkBounds, BoundsCf, BoundsSize = pcall(function()
+                return ModelInstance:GetBoundingBox();
+            end);
+            if OkBounds and typeof(BoundsCf) == "CFrame" and typeof(BoundsSize) == "Vector3" then
+                return BoundsCf, BoundsSize;
+            end
+
+            return CFrame.new(), Vector3.new(4, 4, 4);
+        end
+
+        local function CenterModelAtOrigin(ModelInstance)
+            local BoundsCf = GetModelBounds(ModelInstance);
+            local OkPivot, PivotCf = pcall(function()
+                return ModelInstance:GetPivot();
+            end);
+            if not OkPivot or typeof(PivotCf) ~= "CFrame" then
+                return GetModelBounds(ModelInstance);
+            end
+
+            local Shift = CFrame.new(-BoundsCf.Position);
+            pcall(function()
+                ModelInstance:PivotTo(Shift * PivotCf);
+            end);
+
+            return GetModelBounds(ModelInstance);
+        end
+
+        local function ComputeDistanceForSize(Size)
+            local MaxAxis = math.max(Size.X, Size.Y, Size.Z);
+            local Radius = math.max(MaxAxis * 0.5, 0.5);
+            local HalfFov = math.rad(math.clamp(PreviewCamera.FieldOfView * 0.5, 5, 85));
+            local FitDistance = Radius / math.tan(HalfFov);
+            local PaddingDistance = Radius * 1.45;
+            return math.clamp(FitDistance + PaddingDistance, MinDistance, MaxDistance);
+        end
+
+        local function UpdateCamera()
+            local Distance = math.clamp(tonumber(CurrentDistance) or MinDistance, MinDistance, MaxDistance);
+            CurrentDistance = Distance;
+            CurrentPitch = math.clamp(tonumber(CurrentPitch) or 0, -85, 85);
+            CurrentYaw = tonumber(CurrentYaw) or 0;
+
+            local Rotation = CFrame.fromEulerAnglesYXZ(math.rad(CurrentPitch), math.rad(CurrentYaw), 0);
+            local Offset = Rotation:VectorToWorldSpace(Vector3.new(0, 0, Distance));
+            PreviewCamera.CFrame = CFrame.lookAt(Offset, Vector3.new(0, 0, 0));
+        end
+
+        local function SetModelSource(SourceValue)
+            local Resolved = ResolveModelSource(SourceValue);
+            if not Resolved then
+                return false, "model source not found";
+            end
+
+            local NewPreviewModel, BuildError = BuildPreviewModel(Resolved);
+            if not NewPreviewModel then
+                return false, BuildError;
+            end
+
+            DestroyCurrentModel();
+            CurrentPreviewModel = NewPreviewModel;
+            CurrentModelSource = Resolved;
+            CurrentPreviewModel.Parent = WorldModel;
+
+            local _, BoundsSize = CenterModelAtOrigin(CurrentPreviewModel);
+            if CurrentDistance == nil or Options.keepDistanceOnModelChange ~= true then
+                CurrentDistance = ComputeDistanceForSize(BoundsSize);
+            else
+                CurrentDistance = math.clamp(CurrentDistance, MinDistance, MaxDistance);
+            end
+            UpdateCamera();
+            return true;
+        end
+
+        local Dragging = false;
+        local LastPointer = nil;
+
+        table.insert(WindowData.InternalConnections, Viewport.InputBegan:Connect(function(Input)
+            if DragEnabled and (Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch) then
+                Dragging = true;
+                LastPointer = Input.Position;
+            end
+        end));
+
+        table.insert(WindowData.InternalConnections, Viewport.InputChanged:Connect(function(Input)
+            if ZoomEnabled and Input.UserInputType == Enum.UserInputType.MouseWheel then
+                local WheelDelta = tonumber(Input.Position.Z) or 0;
+                if WheelDelta ~= 0 then
+                    CurrentDistance = math.clamp((tonumber(CurrentDistance) or MinDistance) - (WheelDelta * ZoomSensitivity), MinDistance, MaxDistance);
+                    UpdateCamera();
+                end
+            end
+        end));
+
+        table.insert(WindowData.InternalConnections, UserInputService.InputChanged:Connect(function(Input)
+            if not Dragging then
+                return;
+            end
+            if Input.UserInputType ~= Enum.UserInputType.MouseMovement and Input.UserInputType ~= Enum.UserInputType.Touch then
+                return;
+            end
+            if typeof(Input.Position) ~= "Vector3" then
+                return;
+            end
+
+            if typeof(LastPointer) ~= "Vector3" then
+                LastPointer = Input.Position;
+                return;
+            end
+
+            local Delta = Input.Position - LastPointer;
+            LastPointer = Input.Position;
+            CurrentYaw = (tonumber(CurrentYaw) or 0) - (Delta.X * DragSensitivity);
+            CurrentPitch = math.clamp((tonumber(CurrentPitch) or 0) - (Delta.Y * DragSensitivity), -85, 85);
+            UpdateCamera();
+        end));
+
+        table.insert(WindowData.InternalConnections, UserInputService.InputEnded:Connect(function(Input)
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+                Dragging = false;
+                LastPointer = nil;
+            end
+        end));
+
+        table.insert(WindowData.InternalConnections, WindowData.object:GetPropertyChangedSignal("Size"):Connect(function()
+            UpdateLayout();
+        end));
+
+        UpdateLayout();
+        UpdateCamera();
+
+        local InitialModel = ResolveOption(Options.model, Options.instance, Options.source, Options.target);
+        if InitialModel ~= nil then
+            local OkSet, ErrorMessage = SetModelSource(InitialModel);
+            if (not OkSet) and Library.BindDebug then
+                warn("[Wally Modified][ModelPreview] Failed to set initial model: " .. tostring(ErrorMessage));
+            end
+        end
+
+        local ApiData = {
+            Window = WindowData;
+            Root = PreviewRoot;
+            Frame = PreviewFrame;
+            Viewport = Viewport;
+            World = WorldModel;
+            Camera = PreviewCamera;
+            CaptionLabel = CaptionLabel;
+            SetModel = function(_, SourceValue)
+                return SetModelSource(SourceValue);
+            end;
+            GetModel = function()
+                return CurrentModelSource;
+            end;
+            ClearModel = function()
+                DestroyCurrentModel();
+                UpdateCamera();
+                return true;
+            end;
+            SetCaption = function(_, Text)
+                CurrentCaption = tostring(Text or "");
+                UpdateLayout();
+                return CurrentCaption;
+            end;
+            GetCaption = function()
+                return CurrentCaption;
+            end;
+            SetRotation = function(_, Yaw, Pitch)
+                if Yaw ~= nil then
+                    CurrentYaw = tonumber(Yaw) or CurrentYaw;
+                end
+                if Pitch ~= nil then
+                    CurrentPitch = math.clamp(tonumber(Pitch) or CurrentPitch, -85, 85);
+                end
+                UpdateCamera();
+                return CurrentYaw, CurrentPitch;
+            end;
+            GetRotation = function()
+                return CurrentYaw, CurrentPitch;
+            end;
+            SetZoom = function(_, Distance)
+                CurrentDistance = math.clamp(tonumber(Distance) or CurrentDistance or MinDistance, MinDistance, MaxDistance);
+                UpdateCamera();
+                return CurrentDistance;
+            end;
+            GetZoom = function()
+                return CurrentDistance;
+            end;
+            SetFov = function(_, NewFov)
+                local Fov = math.clamp(tonumber(NewFov) or PreviewCamera.FieldOfView, 20, 100);
+                PreviewCamera.FieldOfView = Fov;
+                if CurrentPreviewModel and CurrentPreviewModel.Parent and Options.keepDistanceOnModelChange ~= true then
+                    local _, Size = GetModelBounds(CurrentPreviewModel);
+                    CurrentDistance = ComputeDistanceForSize(Size);
+                end
+                UpdateCamera();
+                return PreviewCamera.FieldOfView;
+            end;
+            GetFov = function()
+                return PreviewCamera.FieldOfView;
+            end;
+            SetDragEnabled = function(_, State)
+                DragEnabled = (State == true);
+                return DragEnabled;
+            end;
+            GetDragEnabled = function()
+                return DragEnabled;
+            end;
+            SetZoomEnabled = function(_, State)
+                ZoomEnabled = (State == true);
+                return ZoomEnabled;
+            end;
+            GetZoomEnabled = function()
+                return ZoomEnabled;
+            end;
+            SetBackgroundColor = function(_, ColorValue)
+                if typeof(ColorValue) == "Color3" then
+                    PreviewFrame.BackgroundColor3 = ColorValue;
+                end
+                return PreviewFrame.BackgroundColor3;
+            end;
+            GetBackgroundColor = function()
+                return PreviewFrame.BackgroundColor3;
+            end;
+            SetBorderColor = function(_, ColorValue)
+                if typeof(ColorValue) == "Color3" then
+                    PreviewFrame.BorderColor3 = ColorValue;
+                end
+                return PreviewFrame.BorderColor3;
+            end;
+            GetBorderColor = function()
+                return PreviewFrame.BorderColor3;
+            end;
+            SetSize = function(_, Width, Height)
+                if Width ~= nil then
+                    if type(Width) == "string" and string.lower(Width) == "auto" then
+                        CurrentPreviewWidth = nil;
+                    else
+                        CurrentPreviewWidth = math.max(60, math.floor((tonumber(Width) or CurrentPreviewWidth or 60) + 0.5));
+                    end
+                end
+                if Height ~= nil then
+                    PreviewHeight = math.max(96, math.floor((tonumber(Height) or PreviewHeight) + 0.5));
+                end
+                UpdateLayout();
+                return CurrentPreviewWidth, PreviewHeight;
+            end;
+            GetSize = function()
+                return CurrentPreviewWidth, PreviewHeight;
+            end;
+            SetVisible = function(_, State)
+                if WindowData.object and WindowData.object.Parent then
+                    WindowData.object.Visible = (State == true);
+                end
+                return WindowData.object and WindowData.object.Visible == true;
+            end;
+            IsVisible = function()
+                return WindowData.object and WindowData.object.Visible == true;
+            end;
+            SetPosition = function(_, XOffset, YOffset)
+                return WindowData:SetPosition(XOffset, YOffset);
+            end;
+            GetPosition = function()
+                return WindowData:GetPosition();
+            end;
+            Center = function()
+                return WindowData:Center();
+            end;
+            BringToFront = function()
+                return WindowData:BringToFront();
+            end;
+            Destroy = function()
+                return WindowData:Destroy();
+            end;
+        };
+
+        return ApiData;
+    end
+
+    function Library:ModelPreviewWindow(Name, Options)
+        return self:CreateModelPreviewWindow(Name, Options);
     end
 
     function Library:Destroy()
