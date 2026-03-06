@@ -12,8 +12,9 @@ Roblox UI library for script UIs with:
 - Script-based window persistence
 - Toast notifications
 - Built-in settings window generator
+- Dedicated image preview windows
 
-Current build in this repo: `2026-03-06.53`
+Current build in this repo: `2026-03-06.54`
 
 ## Loadstring
 
@@ -69,6 +70,27 @@ Window:Bind("ESP Toggle Bind", {
 end)
 ```
 
+## Image Preview Quick Example
+
+```lua
+local Preview = Library:CreateImagePreviewWindow("Avatar Preview", {
+    windowOptions = {
+        width = 260,
+        resizable = true,
+        persistwindow = true,
+    },
+    image = "rbxassetid://0",
+    caption = "Preview",
+    previewHeight = 180,
+    scaleType = Enum.ScaleType.Fit,
+})
+
+Preview:SetImage("rbxassetid://123456789")
+Preview:SetCaption("Updated Asset")
+Preview:SetVisible(true)
+Preview:BringToFront()
+```
+
 ## Complete Method Index
 
 This index covers every current method defined with `function Library:...` and `function Types:...` in `wally-modified.lua`.
@@ -115,6 +137,8 @@ This index covers every current method defined with `function Library:...` and `
 - `Library:GetAutoScriptStorageKey()`
 - `Library:AttachWindowPersistence(WindowData, WindowName, Options?)`
 - `Library:CreateWindow(Name, Options?)`
+- `Library:CreateImagePreviewWindow(Name?, Options?)`
+- `Library:ImagePreviewWindow(Name?, Options?)`
 - `Library:Destroy()`
 
 ### Container/Window Object Methods
@@ -198,6 +222,59 @@ Important behavior:
 - Passing `Options` updates `Library.Options` (global active style table for subsequent controls/windows).
 - Calls `ApplyWindowOptions()` after creation.
 - Calls `AttachWindowPersistence(...)` automatically based on persistence options.
+
+### `Library:CreateImagePreviewWindow(Name?, Options?)`
+### `Library:ImagePreviewWindow(Name?, Options?)`
+
+Creates a standalone image preview window and returns a preview API object.
+
+`ImagePreviewWindow(...)` is an alias for `CreateImagePreviewWindow(...)`.
+
+Important behavior:
+
+- Uses `CreateWindow(...)` internally.
+- Restores previous `Library.Options` after creating the preview window, so one-off preview window options do not become the global default style.
+
+Image preview options:
+
+- `title` (fallback window title if `Name` is omitted)
+- `windowOptions` (full options table forwarded to window creation)
+- `windowWidth` / `width`
+- `windowMinWidth` / `minwidth`
+- `windowMaxWidth` / `maxwidth`
+- `windowResizable` / `resizable`
+- `resizeGrip`, `resizeMinWidth`, `resizeMaxWidth`
+- `windowAutoWidth`, `windowAutoWidthPadding`, `windowItemSpacing`
+- `persistwindow` / `persistWindow` / `persist`
+- `windowPersistence`, `windowPersistenceOptions`
+- `previewHeight` / `height` (default `180`)
+- `previewWidth` / `imageWidth` (`nil` = auto width)
+- `padding` (outer inset, default `5`)
+- `caption` (default empty)
+- `captionHeight` (default `20`)
+- `image` / `imageId` / `asset` (string or numeric id)
+- `scaleType` (`Enum.ScaleType` or string: `fit`, `crop`, `stretch`, `slice`, `tile`)
+- `imageColor` / `color`
+- `imageTransparency` / `transparency`
+- `backgroundColor` / `bgColor`
+- `borderColor`
+
+Returned preview API:
+
+- fields: `Window`, `Root`, `Frame`, `Image`, `CaptionLabel`
+- `SetImage(Image)` / `GetImage()`
+- `SetCaption(Text)` / `GetCaption()`
+- `SetScaleType(ScaleType)` / `GetScaleType()`
+- `SetColor(Color3)` / `GetColor()`
+- `SetTransparency(Alpha)` / `GetTransparency()`
+- `SetBackgroundColor(Color3)` / `GetBackgroundColor()`
+- `SetBorderColor(Color3)` / `GetBorderColor()`
+- `SetSize(Width, Height)` / `GetSize()`
+- `SetVisible(State)` / `IsVisible()`
+- `SetPosition(X, Y)` / `GetPosition()`
+- `Center()`
+- `BringToFront()`
+- `Destroy()`
 
 ### `Library:GetWindowOptions()`
 
