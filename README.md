@@ -12,9 +12,9 @@ Roblox UI library for script UIs with:
 - Script-based window persistence
 - Toast notifications
 - Built-in settings window generator
-- Dedicated image preview windows
+- Dedicated image and model preview windows
 
-Current build in this repo: `2026-03-06.57`
+Current build in this repo: `2026-03-06.61`
 
 ## Loadstring
 
@@ -87,6 +87,24 @@ Preview:SetVisible(true)
 Preview:BringToFront()
 ```
 
+## Model Preview Quick Example
+
+```lua
+local ModelPreview = Library:CreateModelPreviewWindow("Character Preview", {
+    windowOptions = {
+        persistwindow = true,
+    },
+    model = game.Players.LocalPlayer.Character,
+    caption = "Drag to rotate, wheel to zoom",
+    previewHeight = 220,
+    drag = true,
+    zoom = true,
+})
+
+ModelPreview:SetVisible(true)
+ModelPreview:BringToFront()
+```
+
 ## Complete Method Index
 
 This index covers every current method defined with `function Library:...` and `function Types:...` in `wally-modified.lua`.
@@ -135,6 +153,8 @@ This index covers every current method defined with `function Library:...` and `
 - `Library:CreateWindow(Name, Options?)`
 - `Library:CreateImagePreviewWindow(Name?, Options?)`
 - `Library:ImagePreviewWindow(Name?, Options?)`
+- `Library:CreateModelPreviewWindow(Name?, Options?)`
+- `Library:ModelPreviewWindow(Name?, Options?)`
 - `Library:Destroy()`
 
 ### Container/Window Object Methods
@@ -253,6 +273,60 @@ Returned preview API:
 - `SetScaleType(ScaleType)` / `GetScaleType()`
 - `SetColor(Color3)` / `GetColor()`
 - `SetTransparency(Alpha)` / `GetTransparency()`
+- `SetBackgroundColor(Color3)` / `GetBackgroundColor()`
+- `SetBorderColor(Color3)` / `GetBorderColor()`
+- `SetSize(Width, Height)` / `GetSize()`
+- `SetVisible(State)` / `IsVisible()`
+- `SetPosition(X, Y)` / `GetPosition()`
+- `Center()`
+- `BringToFront()`
+- `Destroy()`
+
+### `Library:CreateModelPreviewWindow(Name?, Options?)`
+### `Library:ModelPreviewWindow(Name?, Options?)`
+
+Creates a standalone 3D model preview window using a `ViewportFrame`.
+
+`ModelPreviewWindow(...)` is an alias for `CreateModelPreviewWindow(...)`.
+
+Model preview options:
+
+- `title`
+- `windowOptions`
+- `windowItemSpacing`
+- `persistwindow` / `persistWindow` / `persist`
+- `windowPersistence`, `windowPersistenceOptions`
+- `previewHeight` / `height` (default `220`)
+- `previewWidth` / `modelWidth` (`nil` = auto width)
+- `padding` (default `5`)
+- `caption` (default empty)
+- `captionHeight` (default `20`)
+- `model` / `instance` / `source` / `target` (`Instance` or recursive name string lookup in `Workspace`)
+- `drag` / `rotateOnDrag` (`true` by default)
+- `zoom` (`true` by default)
+- `dragSensitivity` / `sensitivity` (default `0.35`)
+- `zoomSensitivity` (default `2`)
+- `yaw` (default `35`)
+- `pitch` (default `15`, clamped `-85..85`)
+- `distance` (auto-calculated when omitted)
+- `minDistance` (default `2`)
+- `maxDistance` (default `250`)
+- `fov` (default `70`)
+- `nearPlaneZ` (default `0.1`)
+- `ambient`, `lightColor`, `lightDirection` (`ViewportFrame` lighting)
+- `backgroundColor` / `bgColor`
+- `borderColor`
+
+Returned preview API:
+
+- fields: `Window`, `Root`, `Frame`, `Viewport`, `World`, `Camera`, `CaptionLabel`
+- `SetModel(Source)` / `GetModel()` / `ClearModel()`
+- `SetCaption(Text)` / `GetCaption()`
+- `SetRotation(Yaw, Pitch)` / `GetRotation()`
+- `SetZoom(Distance)` / `GetZoom()`
+- `SetFov(Fov)` / `GetFov()`
+- `SetDragEnabled(State)` / `GetDragEnabled()`
+- `SetZoomEnabled(State)` / `GetZoomEnabled()`
 - `SetBackgroundColor(Color3)` / `GetBackgroundColor()`
 - `SetBorderColor(Color3)` / `GetBorderColor()`
 - `SetSize(Width, Height)` / `GetSize()`
