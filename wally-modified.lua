@@ -18,10 +18,15 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-06.52",
+    Build = "2026-03-06.53",
     BindDebug = false,
     CallbackSuspendDepth = 0,
-    BatchUpdateDepth = 0
+    BatchUpdateDepth = 0,
+    InternalConnections = {},
+    CleanupInstances = {},
+    FlagChangeListeners = {},
+    FlagChangeAnyListeners = {},
+    ZIndexCounter = 30
 };
 local Defaults; do
     local Dragger = {}; do
@@ -32,8 +37,9 @@ local Defaults; do
             local DragInput;
             local DragStart;
             local StartPos;
+            local Connections = {};
 
-            Frame.InputBegan:Connect(function(Input)
+            Connections[#Connections + 1] = Frame.InputBegan:Connect(function(Input)
                 if Input.UserInputType == Enum.UserInputType.MouseButton1 then
                     Dragging = true;
                     DragStart = Input.Position;
@@ -47,13 +53,13 @@ local Defaults; do
                 end
             end)
 
-            Frame.InputChanged:Connect(function(Input)
+            Connections[#Connections + 1] = Frame.InputChanged:Connect(function(Input)
                 if Input.UserInputType == Enum.UserInputType.MouseMovement then
                     DragInput = Input;
                 end
             end)
 
-            UserInputService.InputChanged:Connect(function(Input)
+            Connections[#Connections + 1] = UserInputService.InputChanged:Connect(function(Input)
                 if Dragging and Input == DragInput then
                     local Delta = Input.Position - DragStart;
                     Frame.Position = UDim2.new(
@@ -64,9 +70,11 @@ local Defaults; do
                     );
                 end
             end)
+
+            return Connections;
         end
 
-        UserInputService.InputBegan:Connect(function(Key, Gpe)
+        Library.GlobalToggleConnection = UserInputService.InputBegan:Connect(function(Key, Gpe)
             if (not Gpe) then
                 if Key.KeyCode == Enum.KeyCode.RightControl then
                     Library.Toggled = not Library.Toggled;
@@ -78,7 +86,8 @@ local Defaults; do
                     end
                 end
             end
-        end)
+        end);
+        table.insert(Library.InternalConnections, Library.GlobalToggleConnection);
     end
 
     local function ResolveGuiParent()
@@ -112,6 +121,16 @@ local Defaults; do
                     Options.minwidth,
                     Options.maxwidth
                 );
+                local ResizeMinWindowWidth = math.max(
+                    MinWindowWidth,
+                    math.floor((tonumber(Options.resizeMinWidth or Options.resizeMinWidthPixels) or MinWindowWidth) + 0.5)
+                );
+                local ResizeMaxWindowWidth = math.max(
+                    ResizeMinWindowWidth,
+                    math.floor((tonumber(Options.resizeMaxWidth or Options.resizeMaxWidthPixels) or MaxWindowWidth) + 0.5)
+                );
+                local Resizable = (Options.resizable == true);
+                local UseResizeGrip = (Options.resizeGrip ~= false and Options.resizable == true);
                 local AutoWidthPadding = math.clamp(math.floor((tonumber(Options.autowidthpadding or Options.widthpadding) or 12) + 0.5), 0, 80);
                 local WindowStride = math.max(200, WindowWidth + 10);
 	            local NewWindow = Library:Create('Frame', {
@@ -213,10 +232,14 @@ local Defaults; do
                 order = 0;
                 AutoFlagPrefix = tostring(Name or "Window") .. "_" .. tostring(Library.Count);
                 Width = WindowWidth;
-                MinWidth = MinWindowWidth;
-                MaxWidth = MaxWindowWidth;
+                MinWidth = ResizeMinWindowWidth;
+                MaxWidth = ResizeMaxWindowWidth;
+                Resizable = Resizable;
+                ResizeGripEnabled = UseResizeGrip;
                 AutoWidth = (Options.autowidth == true or Options.autoWidth == true or Options.autosize == true);
                 AutoWidthPadding = AutoWidthPadding;
+                InternalConnections = {};
+                PopupInstances = {};
 
             }, Types)
 
@@ -244,6 +267,16 @@ local Defaults; do
                 return 0;
             end
 
+            local ResizeGrip;
+            local function UpdateQueueStoredPosition()
+                for _, QueueData in next, Library.Queue do
+                    if QueueData and QueueData.Window == NewWindow then
+                        QueueData.Position = NewWindow.Position;
+                        break;
+                    end
+                end
+            end
+
             function WindowData:SetWidth(NewWidth)
                 local Width = math.floor((tonumber(NewWidth) or self.Width or WindowWidth) + 0.5);
                 Width = math.clamp(Width, self.MinWidth or MinWindowWidth, self.MaxWidth or MaxWindowWidth);
@@ -256,6 +289,13 @@ local Defaults; do
                 end
                 if type(self.RefreshTabHostSize) == "function" then
                     self:RefreshTabHostSize();
+                end
+                if ResizeGrip and ResizeGrip.Parent then
+                    local ContentHeight = 0;
+                    if self.toggled and self.container and self.container.Parent then
+                        ContentHeight = self.container.Size.Y.Offset;
+                    end
+                    ResizeGrip.Position = UDim2.new(1, -10, 0, 20 + ContentHeight);
                 end
                 return self.Width;
             end
@@ -307,11 +347,131 @@ local Defaults; do
                 return self:GetWidth();
             end
 
+            function WindowData:SetPosition(XOffset, YOffset)
+                if (not self.object) or (not self.object.Parent) then
+                    return nil;
+                end
+
+                if typeof(XOffset) == "UDim2" then
+                    self.object.Position = XOffset;
+                    UpdateQueueStoredPosition();
+                    return self.object.Position;
+                end
+
+                local PositionData = self.object.Position;
+                local X = math.floor((tonumber(XOffset) or PositionData.X.Offset) + 0.5);
+                local Y = math.floor((tonumber(YOffset) or PositionData.Y.Offset) + 0.5);
+                self.object.Position = UDim2.new(PositionData.X.Scale, X, PositionData.Y.Scale, Y);
+                UpdateQueueStoredPosition();
+                return self.object.Position;
+            end
+
+            function WindowData:GetPosition()
+                if (not self.object) or (not self.object.Parent) then
+                    return nil;
+                end
+                return self.object.Position;
+            end
+
+            function WindowData:Center()
+                if (not self.object) or (not self.object.Parent) then
+                    return nil;
+                end
+
+                local ParentGuiObject = self.object.Parent;
+                local ParentSize = ParentGuiObject.AbsoluteSize;
+                local TargetWidth = self:GetWidth();
+                local TargetHeight = 30 + ((self.container and self.container.Size and self.container.Size.Y.Offset) or 0);
+
+                local NewX = math.floor(((ParentSize.X - TargetWidth) * 0.5) + 0.5);
+                local NewY = math.floor(((ParentSize.Y - TargetHeight) * 0.5) + 0.5);
+                return self:SetPosition(NewX, NewY);
+            end
+
+            function WindowData:BringToFront()
+                if (not self.object) or (not self.object.Parent) then
+                    return false;
+                end
+
+                local Base = math.max(tonumber(Library.ZIndexCounter) or 30, 30) + 10;
+                Library.ZIndexCounter = Base;
+
+                self.object.ZIndex = Base;
+                for _, Descendant in next, self.object:GetDescendants() do
+                    if Descendant:IsA("GuiObject") then
+                        local Relative = math.max((tonumber(Descendant.ZIndex) or 0) - 3, 0);
+                        Descendant.ZIndex = Base + Relative;
+                    end
+                end
+                return true;
+            end
+
             table.insert(Library.Queue, {
                 Window = WindowData.object;
                 Position = WindowData.object.Position;
             })
             table.insert(Library.Windows, WindowData);
+
+            local function UpdateResizeGripPosition()
+                if not ResizeGrip or (not ResizeGrip.Parent) then
+                    return;
+                end
+                local ContentHeight = 0;
+                if WindowData.toggled and WindowData.container and WindowData.container.Parent then
+                    ContentHeight = WindowData.container.Size.Y.Offset;
+                end
+                ResizeGrip.Position = UDim2.new(1, -10, 0, 20 + ContentHeight);
+                ResizeGrip.Visible = (WindowData.Resizable == true and WindowData.toggled);
+            end
+            WindowData.UpdateResizeGripPosition = UpdateResizeGripPosition;
+
+            if UseResizeGrip then
+                ResizeGrip = Library:Create("TextButton", {
+                    Name = "ResizeGrip";
+                    Text = "";
+                    AutoButtonColor = false;
+                    Size = UDim2.new(0, 10, 0, 10);
+                    Position = UDim2.new(1, -10, 0, 20);
+                    BackgroundColor3 = Options.bordercolor;
+                    BorderColor3 = Options.strokecolor;
+                    ZIndex = 6;
+                    Parent = NewWindow;
+                });
+
+                local Resizing = false;
+                local ResizeStartX = 0;
+                local ResizeStartWidth = WindowData:GetWidth();
+                table.insert(WindowData.InternalConnections, ResizeGrip.InputBegan:Connect(function(Input)
+                    if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        Resizing = true;
+                        ResizeStartX = Input.Position.X;
+                        ResizeStartWidth = WindowData:GetWidth();
+                    end
+                end));
+                table.insert(WindowData.InternalConnections, UserInputService.InputChanged:Connect(function(Input)
+                    if Resizing and Input.UserInputType == Enum.UserInputType.MouseMovement then
+                        local DeltaX = Input.Position.X - ResizeStartX;
+                        WindowData:SetWidth(ResizeStartWidth + DeltaX);
+                        UpdateResizeGripPosition();
+                    end
+                end));
+                table.insert(WindowData.InternalConnections, UserInputService.InputEnded:Connect(function(Input)
+                    if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        Resizing = false;
+                    end
+                end));
+                UpdateResizeGripPosition();
+            end
+
+            table.insert(WindowData.InternalConnections, NewWindow:GetPropertyChangedSignal("Position"):Connect(function()
+                UpdateQueueStoredPosition();
+                UpdateResizeGripPosition();
+            end));
+            table.insert(WindowData.InternalConnections, NewWindow.InputBegan:Connect(function(Input)
+                if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    WindowData:BringToFront();
+                end
+            end));
 
             if ListLayout then
                 ListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
@@ -319,6 +479,7 @@ local Defaults; do
                         WindowData.container.Size = UDim2.new(1, 0, 0, GetContentHeight());
                     end
                     WindowData:RefreshAutoWidth(false);
+                    UpdateResizeGripPosition();
                 end)
             end
 
@@ -349,6 +510,7 @@ local Defaults; do
                 if type(WindowData.OnToggleChanged) == "function" then
                     pcall(WindowData.OnToggleChanged, WindowData.toggled);
                 end
+                UpdateResizeGripPosition();
             end
 
             WindowToggle.MouseButton1Click:Connect(function()
@@ -365,6 +527,98 @@ local Defaults; do
 
             function WindowData:GetMinimized()
                 return not WindowData.toggled;
+            end
+
+            function WindowData:Destroy()
+                if self._Destroyed == true then
+                    return false;
+                end
+                self._Destroyed = true;
+
+                if type(self._PersistenceConnections) == "table" then
+                    for _, Connection in next, self._PersistenceConnections do
+                        if Connection and Connection.Disconnect then
+                            pcall(function()
+                                Connection:Disconnect();
+                            end);
+                        end
+                    end
+                    self._PersistenceConnections = nil;
+                end
+
+                if type(self.InternalConnections) == "table" then
+                    for _, Connection in next, self.InternalConnections do
+                        if Connection and Connection.Disconnect then
+                            pcall(function()
+                                Connection:Disconnect();
+                            end);
+                        end
+                    end
+                    self.InternalConnections = nil;
+                end
+
+                if type(self.PopupInstances) == "table" then
+                    for _, PopupObject in next, self.PopupInstances do
+                        if typeof(PopupObject) == "Instance" and PopupObject.Parent then
+                            pcall(function()
+                                PopupObject:Destroy();
+                            end);
+                        end
+                    end
+                    self.PopupInstances = nil;
+                end
+
+                for Index = #Library.Windows, 1, -1 do
+                    if Library.Windows[Index] == self then
+                        table.remove(Library.Windows, Index);
+                    end
+                end
+
+                local WindowObject = self.object;
+                for Index = #Library.Queue, 1, -1 do
+                    local QueueData = Library.Queue[Index];
+                    if QueueData and QueueData.Window == WindowObject then
+                        table.remove(Library.Queue, Index);
+                    end
+                end
+
+                for FlagName, BindData in next, Library.Binds do
+                    if BindData and BindData.Location == self.flags then
+                        Library.Binds[FlagName] = nil;
+                    end
+                end
+
+                if type(self.flags) == "table" then
+                    for FlagName in next, self.flags do
+                        if Library.Callbacks then
+                            Library.Callbacks[FlagName] = nil;
+                        end
+                    end
+                end
+
+                if Library.ControlApisByRoot and WindowObject then
+                    for RootObject in next, Library.ControlApisByRoot do
+                        if typeof(RootObject) == "Instance" then
+                            if RootObject == WindowObject or RootObject:IsDescendantOf(WindowObject) then
+                                local ApiData = Library.ControlApisByRoot[RootObject];
+                                if type(ApiData) == "table" and ApiData.FlagName and Library.ControlApisByFlag then
+                                    if Library.ControlApisByFlag[ApiData.FlagName] == ApiData then
+                                        Library.ControlApisByFlag[ApiData.FlagName] = nil;
+                                    end
+                                end
+                                Library.ControlApisByRoot[RootObject] = nil;
+                            end
+                        end
+                    end
+                end
+
+                if WindowObject and WindowObject.Parent then
+                    pcall(function()
+                        WindowObject:Destroy();
+                    end);
+                end
+                self.object = nil;
+                return true;
             end
 
             NewWindow:SetAttribute("WallyWindowToggled", WindowData.toggled);
@@ -391,6 +645,9 @@ local Defaults; do
             local ParentWindow = self.ParentWindow or self;
             if ParentWindow and type(ParentWindow.RefreshAutoWidth) == "function" then
                 ParentWindow:RefreshAutoWidth(false);
+            end
+            if ParentWindow and type(ParentWindow.UpdateResizeGripPosition) == "function" then
+                ParentWindow:UpdateResizeGripPosition();
             end
         end
         
@@ -436,6 +693,80 @@ local Defaults; do
                 return false;
             end
             return (Library.CallbackSuspendDepth or 0) <= 0;
+        end
+
+        local function NotifyFlagChanged(FlagName, Location, NewValue, OldValue, Source)
+            if type(Library.EmitFlagChanged) == "function" then
+                Library:EmitFlagChanged(FlagName, Location, NewValue, OldValue, Source);
+                return;
+            end
+
+            local Key = tostring(FlagName or "");
+            if Key == "" then
+                return;
+            end
+
+            local Payload = {
+                Flag = Key;
+                flag = Key;
+                Location = Location;
+                location = Location;
+                Value = NewValue;
+                value = NewValue;
+                OldValue = OldValue;
+                oldValue = OldValue;
+                Source = Source;
+                source = Source;
+            };
+
+            local ListenersByFlag = Library.FlagChangeListeners or {};
+            local FlagListeners = ListenersByFlag[Key];
+            if type(FlagListeners) == "table" then
+                for Index = #FlagListeners, 1, -1 do
+                    local Entry = FlagListeners[Index];
+                    local Callback = Entry and Entry.Callback;
+                    local ScopeLocation = Entry and Entry.Location;
+                    if type(Callback) ~= "function" then
+                        table.remove(FlagListeners, Index);
+                    elseif ScopeLocation == nil or ScopeLocation == Location then
+                        pcall(Callback, NewValue, OldValue, Payload);
+                    end
+                end
+            end
+
+            local AnyListeners = Library.FlagChangeAnyListeners or {};
+            for Index = #AnyListeners, 1, -1 do
+                local Entry = AnyListeners[Index];
+                local Callback = Entry and Entry.Callback;
+                local ScopeLocation = Entry and Entry.Location;
+                if type(Callback) ~= "function" then
+                    table.remove(AnyListeners, Index);
+                elseif ScopeLocation == nil or ScopeLocation == Location then
+                    pcall(Callback, Key, NewValue, OldValue, Payload);
+                end
+            end
+        end
+
+        local function SetFlagValue(Location, FlagName, NewValue, Source, ForceDispatch)
+            if type(Location) ~= "table" then
+                return false, nil;
+            end
+
+            local Key = tostring(FlagName or "");
+            if Key == "" then
+                return false, nil;
+            end
+
+            local OldValue = Location[Key];
+            Location[Key] = NewValue;
+            Library:RegisterFlag(Location, Key);
+
+            if ForceDispatch == true or OldValue ~= NewValue then
+                NotifyFlagChanged(Key, Location, NewValue, OldValue, Source);
+                return true, OldValue;
+            end
+
+            return false, OldValue;
         end
 
         local function NormalizeDependencyMode(Value)
@@ -631,6 +962,8 @@ local Defaults; do
             end
             local LastShown = nil;
             local LastEnabled = nil;
+            local DependencyConnections = {};
+            local ChangeListeners = {};
 
             local Targets = {};
             if type(InteractiveTargets) == "table" then
@@ -695,6 +1028,51 @@ local Defaults; do
                 end
             end
 
+            local function EmitChanged(...)
+                for Index = #ChangeListeners, 1, -1 do
+                    local Listener = ChangeListeners[Index];
+                    if type(Listener) ~= "table" or Listener.Connected ~= true or type(Listener.Callback) ~= "function" then
+                        table.remove(ChangeListeners, Index);
+                    else
+                        pcall(Listener.Callback, ...);
+                    end
+                end
+            end
+
+            function Api:OnChanged(Callback)
+                if type(Callback) ~= "function" then
+                    return nil;
+                end
+
+                local Listener = {
+                    Connected = true;
+                    Callback = Callback;
+                };
+                table.insert(ChangeListeners, Listener);
+
+                return {
+                    Connected = true;
+                    Disconnect = function(Self)
+                        if Listener.Connected ~= true then
+                            if type(Self) == "table" then
+                                Self.Connected = false;
+                            end
+                            return false;
+                        end
+                        Listener.Connected = false;
+                        Listener.Callback = nil;
+                        if type(Self) == "table" then
+                            Self.Connected = false;
+                        end
+                        return true;
+                    end
+                };
+            end
+
+            function Api:EmitChanged(...)
+                EmitChanged(...);
+            end
+
             local function EvaluateDependencies()
                 local VisiblePass = EvaluateSingleDependencyRule(VisibilityRule, Location);
                 local EnabledPass = EvaluateSingleDependencyRule(EnabledRule, Location);
@@ -727,6 +1105,99 @@ local Defaults; do
                 return ShouldShow, ShouldEnable;
             end
 
+            local function DisconnectDependencyConnections()
+                for Index = #DependencyConnections, 1, -1 do
+                    local Connection = DependencyConnections[Index];
+                    if Connection and Connection.Disconnect then
+                        pcall(function()
+                            Connection:Disconnect();
+                        end);
+                    end
+                    DependencyConnections[Index] = nil;
+                end
+            end
+
+            local function CollectDependencyFlags(Rule, Output)
+                if Rule == nil then
+                    return;
+                end
+
+                local RuleType = type(Rule);
+                if RuleType == "string" then
+                    local Key = tostring(Rule);
+                    if Key ~= "" then
+                        Output[Key] = true;
+                    end
+                    return;
+                end
+
+                if RuleType ~= "table" then
+                    return;
+                end
+
+                local FlagData = Rule.flag;
+                if type(FlagData) == "string" and FlagData ~= "" then
+                    Output[FlagData] = true;
+                end
+
+                local IsArray = false;
+                for Key in next, Rule do
+                    if type(Key) == "number" then
+                        IsArray = true;
+                        break;
+                    end
+                end
+
+                if IsArray then
+                    for _, SubRule in next, Rule do
+                        CollectDependencyFlags(SubRule, Output);
+                    end
+                    return;
+                end
+
+                if type(FlagData) == "string" and FlagData ~= "" then
+                    return;
+                end
+
+                for Key, Value in next, Rule do
+                    if Key ~= "mode" and Key ~= "operator" and Key ~= "predicate" and Key ~= "flag" then
+                        if type(Key) == "string" and Key ~= "" then
+                            Output[Key] = true;
+                        end
+                        if type(Value) == "table" then
+                            CollectDependencyFlags(Value, Output);
+                        end
+                    end
+                end
+            end
+
+            local function RebindDependencySignals()
+                DisconnectDependencyConnections();
+                local SeenFlags = {};
+                CollectDependencyFlags(VisibilityRule, SeenFlags);
+                CollectDependencyFlags(EnabledRule, SeenFlags);
+
+                for FlagName in next, SeenFlags do
+                    if type(Library.OnFlagChanged) == "function" then
+                        local Connection = Library:OnFlagChanged(FlagName, function()
+                            EvaluateDependencies();
+                        end);
+                        if Connection and Connection.Disconnect then
+                            table.insert(DependencyConnections, Connection);
+                        end
+                    end
+                end
+
+                if Root and Root.Parent then
+                    local DestroyConnection = Root.AncestryChanged:Connect(function(_, ParentData)
+                        if not ParentData then
+                            DisconnectDependencyConnections();
+                        end
+                    end);
+                    table.insert(DependencyConnections, DestroyConnection);
+                end
+            end
+
             function Api:SetVisible(State)
                 ControlVisible = CoerceBoolean(State, true);
                 EvaluateDependencies();
@@ -749,18 +1220,21 @@ local Defaults; do
 
             function Api:SetVisibilityDependency(Rule)
                 VisibilityRule = Rule;
+                RebindDependencySignals();
                 EvaluateDependencies();
                 return true;
             end
 
             function Api:SetEnabledDependency(Rule)
                 EnabledRule = Rule;
+                RebindDependencySignals();
                 EvaluateDependencies();
                 return true;
             end
 
             function Api:SetDependency(Rule)
                 VisibilityRule = Rule;
+                RebindDependencySignals();
                 EvaluateDependencies();
                 return true;
             end
@@ -808,6 +1282,9 @@ local Defaults; do
             end
 
             local FlagName = tostring(Options.flag or "");
+            Api.Root = Root;
+            Api.Location = Location;
+            Api.FlagName = (FlagName ~= "" and FlagName or nil);
             if FlagName ~= "" then
                 Library.ControlApisByFlag = Library.ControlApisByFlag or {};
                 Library.ControlApisByFlag[FlagName] = Api;
@@ -821,29 +1298,6 @@ local Defaults; do
                 end;
             });
 
-            if not Library.DependencyConnection then
-                local LastTick = 0;
-                Library.DependencyConnection = RunService.Heartbeat:Connect(function()
-                    local Now = os.clock();
-                    if (Now - LastTick) < 0.1 then
-                        return;
-                    end
-                    LastTick = Now;
-
-                    local Entries = Library.DependencyControls or {};
-                    for Index = #Entries, 1, -1 do
-                        local Entry = Entries[Index];
-                        local RootObject = Entry and Entry.Root;
-                        local Refresh = Entry and Entry.Refresh;
-                        if (not RootObject) or (not RootObject.Parent) or type(Refresh) ~= "function" then
-                            table.remove(Entries, Index);
-                        else
-                            pcall(Refresh);
-                        end
-                    end
-                end);
-            end
-
             if TooltipText ~= nil then
                 Api:SetTooltip(TooltipText);
             end
@@ -854,6 +1308,7 @@ local Defaults; do
                 SearchMatched = string.find(ControlText, Query, 1, true) ~= nil;
             end
 
+            RebindDependencySignals();
             EvaluateDependencies();
             return Api;
         end
@@ -1182,6 +1637,7 @@ local Defaults; do
 
             local SearchInput = CheckData:FindFirstChild("SearchInput");
             local IsInternalChange = false;
+            local ApiData;
 
             local function ApplyQuery(Query)
                 if type(self.SetSearchQuery) == "function" then
@@ -1189,6 +1645,9 @@ local Defaults; do
                 end
                 if ShouldDispatchCallback(true) then
                     CallbackData(Query);
+                    if ApiData and type(ApiData.EmitChanged) == "function" then
+                        ApiData:EmitChanged(Query);
+                    end
                 end
             end
 
@@ -1200,7 +1659,7 @@ local Defaults; do
             end);
 
             self:Resize();
-            local ApiData = {
+            ApiData = {
                 Set = function(_, NewValue, FireCallback)
                     IsInternalChange = true;
                     SearchInput.Text = tostring(NewValue or "");
@@ -1280,6 +1739,7 @@ local Defaults; do
             end
             
             Location[Flag] = (Default == true);
+            Library:RegisterFlag(Location, Flag);
             local InitialOptions = self.options or Library.Options or {};
 
             local CheckData = Library:Create('Frame', {
@@ -1321,6 +1781,7 @@ local Defaults; do
 
             local ToggleLabel = CheckData:FindFirstChild("Title");
             local ToggleButton = CheckData:FindFirstChild("Checkmark");
+            local ApiData;
             local function UpdateVisualState()
                 local ActiveOptions, IsFillStyle, FillOnColor, FillOffColor = ResolveToggleTheme();
 
@@ -1347,9 +1808,12 @@ local Defaults; do
             end
                 
             local function SetToggleState(NewValue, FireCallback)
-                Location[Flag] = (NewValue == true);
+                SetFlagValue(Location, Flag, (NewValue == true), ApiData, false);
                 if ShouldDispatchCallback(FireCallback) then
                     Callback(Location[Flag]);
+                    if ApiData and type(ApiData.EmitChanged) == "function" then
+                        ApiData:EmitChanged(Location[Flag]);
+                    end
                 end
                 UpdateVisualState();
             end
@@ -1375,12 +1839,15 @@ local Defaults; do
 
             if Location[Flag] == true then
                 if ShouldDispatchCallback(true) then
-                    Callback(Location[Flag])
+                    Callback(Location[Flag]);
+                    if ApiData and type(ApiData.EmitChanged) == "function" then
+                        ApiData:EmitChanged(Location[Flag]);
+                    end
                 end
             end
 
             self:Resize();
-            local ApiData = {
+            ApiData = {
                 Set = function(self, b)
                     SetToggleState(b, true);
                 end,
@@ -1421,17 +1888,24 @@ local Defaults; do
             });
             
             local ButtonObject = CheckData:FindFirstChild(Name);
+            local ApiData;
             ButtonObject.MouseButton1Click:Connect(function(...)
                 if ShouldDispatchCallback(true) then
                     Callback(...);
+                    if ApiData and type(ApiData.EmitChanged) == "function" then
+                        ApiData:EmitChanged(...);
+                    end
                 end
             end)
             self:Resize();
 
-            local ApiData = {
+            ApiData = {
                 Fire = function()
                     if ShouldDispatchCallback(true) then
                         Callback();
+                        if ApiData and type(ApiData.EmitChanged) == "function" then
+                            ApiData:EmitChanged();
+                        end
                     end
                 end
             };
@@ -1462,6 +1936,7 @@ local Defaults; do
                 Default = tostring(Default);
                 Location[Flag] = Default;
             end
+            Library:RegisterFlag(Location, Flag);
 
             local CheckData = Library:Create('Frame', {
                 BackgroundTransparency = 1;
@@ -1503,26 +1978,30 @@ local Defaults; do
         
             local BoxData = CheckData:FindFirstChild('Box');
 
+            local ApiData;
             local function SetBoxValue(NewValue, FireCallback, EventData)
                 local Old = Location[Flag];
                 if ValueType == "number" then
                     local Numeric = tonumber(NewValue);
                     if (not Numeric) then
-                        Location[Flag] = "";
+                        SetFlagValue(Location, Flag, "", ApiData, false);
                         BoxData.Text = "";
                     else
                         local Clamped = math.clamp(Numeric, Min, Max);
-                        Location[Flag] = Clamped;
+                        SetFlagValue(Location, Flag, Clamped, ApiData, false);
                         BoxData.Text = tostring(Clamped);
                     end
                 else
                     local TextValue = tostring(NewValue or "");
-                    Location[Flag] = TextValue;
+                    SetFlagValue(Location, Flag, TextValue, ApiData, false);
                     BoxData.Text = TextValue;
                 end
 
                 if ShouldDispatchCallback(FireCallback) then
                     Callback(Location[Flag], Old, EventData);
+                    if ApiData and type(ApiData.EmitChanged) == "function" then
+                        ApiData:EmitChanged(Location[Flag], Old, EventData);
+                    end
                 end
             end
 
@@ -1555,7 +2034,7 @@ local Defaults; do
             });
             
             self:Resize();
-            local ApiData = {
+            ApiData = {
                 Object = BoxData;
                 TextBox = BoxData;
                 Get = function()
@@ -1619,7 +2098,8 @@ local Defaults; do
             local ToggleState = false;
             local HoldState = false;
             local AlwaysState = false;
-            Location[ModeFlag] = CurrentMode;
+            SetFlagValue(Location, ModeFlag, CurrentMode, nil, false);
+            Library:RegisterFlag(Location, Flag);
 
             local function GetEnumItemSafe(EnumType, Name)
                 if type(Name) ~= "string" or Name == "" then
@@ -1796,9 +2276,11 @@ local Defaults; do
                 return ShortNames[Text] or Text;
             end
 
+            local ApiData = {};
+
             local NormalizedDefault = NormalizeBinding(Default);
             if NormalizedDefault then
-                Location[Flag] = NormalizedDefault;
+                SetFlagValue(Location, Flag, NormalizedDefault, ApiData, false);
             end
 
             local DisplayName = GetInputName(Location[Flag]);
@@ -1852,6 +2334,7 @@ local Defaults; do
                         FocusedTextBox:ReleaseFocus();
                     end
 
+                    local PreviousBinding = Location[Flag];
                     ButtonData.Text = "..."
                     while Library.Binding do
                         local InputObject, Gpe = UserInputService.InputBegan:Wait();
@@ -1882,7 +2365,7 @@ local Defaults; do
                                 break;
                             end
                             if ParsedKeyCode == Enum.KeyCode.Backspace or ParsedKeyCode == Enum.KeyCode.Delete then
-                                Location[Flag] = nil;
+                                SetFlagValue(Location, Flag, nil, ApiData, true);
                                 DebugBindLog("Binding cleared with Backspace/Delete");
                                 break;
                             end
@@ -1890,12 +2373,16 @@ local Defaults; do
 
                         local Normalized = GetBindingFromInputObject(InputObject);
                         if Normalized then
-                            Location[Flag] = Normalized;
+                            SetFlagValue(Location, Flag, Normalized, ApiData, true);
                             DebugBindLog("Binding changed to " .. tostring(Normalized.Name));
                             break;
                         else
                             DebugBindLog("Input ignored (not a bindable key/mouse)");
                         end
+                    end
+
+                    if ApiData and type(ApiData.EmitChanged) == "function" and PreviousBinding ~= Location[Flag] then
+                        ApiData:EmitChanged(Location[Flag], PreviousBinding, "binding_changed");
                     end
                 end);
 
@@ -1910,13 +2397,11 @@ local Defaults; do
             end)
             
             if Location[Flag] then
-                Location[Flag] = NormalizeBinding(Location[Flag]);
+                SetFlagValue(Location, Flag, NormalizeBinding(Location[Flag]), ApiData, false);
             end
             ButtonData.Text = GetInputName(Location[Flag]);
 
 	            self:Resize();
-
-	            local ApiData = {};
 
 	            function ApiData:Set(NewBinding, FireCallback)
 	                local Normalized = NormalizeBinding(NewBinding);
@@ -1924,22 +2409,30 @@ local Defaults; do
 	                    return false, "invalid binding";
 	                end
 
-	                Location[Flag] = Normalized;
+	                local OldBinding = Location[Flag];
+	                SetFlagValue(Location, Flag, Normalized, ApiData, false);
 	                ButtonData.Text = GetInputName(Location[Flag]);
 
 	                if FireCallback == true and ShouldDispatchCallback(true) then
 	                    Callback(Location[Flag]);
+                        if type(ApiData.EmitChanged) == "function" then
+                            ApiData:EmitChanged(Location[Flag], OldBinding, "binding_set");
+                        end
 	                end
 
 	                return true, Location[Flag];
 	            end
 
 	            function ApiData:Clear(FireCallback)
-	                Location[Flag] = nil;
+	                local OldBinding = Location[Flag];
+	                SetFlagValue(Location, Flag, nil, ApiData, false);
 	                ButtonData.Text = GetInputName(Location[Flag]);
 
 	                if FireCallback == true and ShouldDispatchCallback(true) then
 	                    Callback(Location[Flag]);
+                        if type(ApiData.EmitChanged) == "function" then
+                            ApiData:EmitChanged(Location[Flag], OldBinding, "binding_cleared");
+                        end
 	                end
 
 	                return true;
@@ -1960,6 +2453,9 @@ local Defaults; do
                         HoldState = false;
                         if ShouldDispatchCallback(FireCallback) then
                             Callback(false, Location[Flag], "hold_end");
+                            if type(ApiData.EmitChanged) == "function" then
+                                ApiData:EmitChanged(false, Location[Flag], "hold_end");
+                            end
                         end
                     end
                     if OldMode == "toggle" and ToggleState then
@@ -1969,15 +2465,21 @@ local Defaults; do
                         AlwaysState = false;
                         if ShouldDispatchCallback(FireCallback) then
                             Callback(false, Location[Flag], "always_end");
+                            if type(ApiData.EmitChanged) == "function" then
+                                ApiData:EmitChanged(false, Location[Flag], "always_end");
+                            end
                         end
                     end
 
                     CurrentMode = NextMode;
-                    Location[ModeFlag] = CurrentMode;
+                    SetFlagValue(Location, ModeFlag, CurrentMode, ApiData, false);
                     if NextMode == "always" then
                         AlwaysState = true;
                         if ShouldDispatchCallback(FireCallback) then
                             Callback(true, Location[Flag], "always_start");
+                            if type(ApiData.EmitChanged) == "function" then
+                                ApiData:EmitChanged(true, Location[Flag], "always_start");
+                            end
                         end
                     end
 
@@ -2007,6 +2509,9 @@ local Defaults; do
                         ToggleState = Desired;
                         if ShouldDispatchCallback(FireCallback) then
                             Callback(ToggleState, Location[Flag], "toggle_state");
+                            if type(ApiData.EmitChanged) == "function" then
+                                ApiData:EmitChanged(ToggleState, Location[Flag], "toggle_state");
+                            end
                         end
                         return ToggleState;
                     end
@@ -2014,6 +2519,9 @@ local Defaults; do
                         HoldState = Desired;
                         if ShouldDispatchCallback(FireCallback) then
                             Callback(HoldState, Location[Flag], (HoldState and "hold_start" or "hold_end"));
+                            if type(ApiData.EmitChanged) == "function" then
+                                ApiData:EmitChanged(HoldState, Location[Flag], (HoldState and "hold_start" or "hold_end"));
+                            end
                         end
                         return HoldState;
                     end
@@ -2021,6 +2529,9 @@ local Defaults; do
                         AlwaysState = Desired;
                         if ShouldDispatchCallback(FireCallback) then
                             Callback(AlwaysState, Location[Flag], (AlwaysState and "always_start" or "always_end"));
+                            if type(ApiData.EmitChanged) == "function" then
+                                ApiData:EmitChanged(AlwaysState, Location[Flag], (AlwaysState and "always_start" or "always_end"));
+                            end
                         end
                         return AlwaysState;
                     end
@@ -2041,6 +2552,7 @@ local Defaults; do
 	            local BindEntry = {
 	                Location = Location;
 	                Callback = Callback;
+                    Api = ApiData;
                     GetMode = function()
                         return CurrentMode;
                     end;
@@ -2063,6 +2575,9 @@ local Defaults; do
                     AlwaysState = true;
                     if ShouldDispatchCallback(true) then
                         Callback(true, Location[Flag], "always_start");
+                        if type(ApiData.EmitChanged) == "function" then
+                            ApiData:EmitChanged(true, Location[Flag], "always_start");
+                        end
                     end
                 end
 
@@ -2447,6 +2962,12 @@ local Defaults; do
                 Parent = PopupParent;
             });
             PopupData.Parent = ModalBlocker;
+            table.insert(Library.CleanupInstances, ModalBlocker);
+            local ParentWindowData = self.ParentWindow or self;
+            if type(ParentWindowData) == "table" then
+                ParentWindowData.PopupInstances = ParentWindowData.PopupInstances or {};
+                table.insert(ParentWindowData.PopupInstances, ModalBlocker);
+            end
 
             local function SetGuiZIndex(Root, Z)
                 if Root:IsA("GuiObject") then
@@ -2501,6 +3022,7 @@ local Defaults; do
             local Hue, Saturation, Value = Default:ToHSV();
             local CurrentColor = Default;
             local CurrentTransparency = DefaultTransparency;
+            local ApiData;
 
             local function Clamp01(Number)
                 return math.clamp(tonumber(Number) or 0, 0, 1);
@@ -2632,9 +3154,11 @@ local Defaults; do
                 CurrentTransparency = Clamp01(NewTransparency or CurrentTransparency);
                 CurrentColor = Color3.fromHSV(Hue, Saturation, Value);
 
-                Location[Flag] = CurrentColor;
+                local OldColor = Location[Flag];
+                local OldTransparency = (TransparencyFlag ~= nil and tostring(TransparencyFlag) ~= "" and TransparencyLocation[TransparencyFlag]) or nil;
+                SetFlagValue(Location, Flag, CurrentColor, ApiData, false);
                 if TransparencyFlag ~= nil and tostring(TransparencyFlag) ~= "" then
-                    TransparencyLocation[TransparencyFlag] = CurrentTransparency;
+                    SetFlagValue(TransparencyLocation, TransparencyFlag, CurrentTransparency, ApiData, false);
                 end
 
                 UpdateVisuals();
@@ -2642,6 +3166,9 @@ local Defaults; do
 
                 if ShouldDispatchCallback(FireCallback) then
                     Callback(CurrentColor, CurrentTransparency);
+                    if ApiData and type(ApiData.EmitChanged) == "function" then
+                        ApiData:EmitChanged(CurrentColor, CurrentTransparency, OldColor, OldTransparency);
+                    end
                 end
             end
 
@@ -2991,7 +3518,7 @@ local Defaults; do
             end
 
             self:Resize();
-            local ApiData = {
+            ApiData = {
                 Set = function(_, NewColor, FireCallback)
                     ApplyColor(NewColor, FireCallback, CurrentTransparency);
                 end,
@@ -3029,6 +3556,13 @@ local Defaults; do
             local Location = Options.location or self.flags;
             local Precise  = Options.precise  or false
             local Decimals = math.clamp(math.floor(tonumber(Options.decimals) or 2), 0, 6);
+            local Step = tonumber(Options.step);
+            if Step ~= nil then
+                Step = math.abs(Step);
+                if Step <= 0 then
+                    Step = nil;
+                end
+            end
             local SliderValueWidth = math.clamp(math.floor((tonumber(Options.valueWidth or Options.valuewidth or Options.valueLabelWidth) or 40) + 0.5), 24, 80);
             local SliderTrackInset = SliderValueWidth + 2;
             local SliderContainerWidth = math.clamp(SliderTrackInset + 36, 58, 140);
@@ -3039,6 +3573,21 @@ local Defaults; do
             if Min > Max then
                 Min, Max = Max, Min;
             end
+
+            local function GetStepDecimals(Value)
+                if type(Value) ~= "number" then
+                    return 0;
+                end
+                local Text = tostring(Value);
+                local DotIndex = string.find(Text, ".", 1, true);
+                if not DotIndex then
+                    return 0;
+                end
+                local Count = #Text - DotIndex;
+                return math.clamp(Count, 0, 6);
+            end
+            local StepDecimals = GetStepDecimals(Step);
+            local DisplayDecimals = math.clamp(math.max(Decimals, StepDecimals), 0, 6);
 
             local CheckData = Library:Create('Frame', {
                 BackgroundTransparency = 1;
@@ -3128,18 +3677,31 @@ local Defaults; do
             local CurrentValue;
             local PrecisionFactor = 10 ^ Decimals;
             local TrackInset = SliderTrackInset;
+            local ApiData;
+            Library:RegisterFlag(Location, Flag);
 
             local function NormalizeValue(Raw)
                 local Value = math.clamp(tonumber(Raw) or Min, Min, Max);
+
+                if Step then
+                    local Steps = math.floor((((Value - Min) / Step) + 0.5));
+                    Value = Min + (Steps * Step);
+                    Value = math.clamp(Value, Min, Max);
+                end
+
                 if Precise then
                     return math.floor((Value * PrecisionFactor) + 0.5) / PrecisionFactor;
+                end
+                if Step and StepDecimals > 0 then
+                    local StepPrecision = 10 ^ StepDecimals;
+                    return math.floor((Value * StepPrecision) + 0.5) / StepPrecision;
                 end
                 return math.floor(Value);
             end
 
             local function FormatValue(Value)
-                if Precise then
-                    return string.format("%." .. tostring(Decimals) .. "f", Value);
+                if Precise or (Step and StepDecimals > 0) then
+                    return string.format("%." .. tostring(DisplayDecimals) .. "f", Value);
                 end
                 return tostring(Value);
             end
@@ -3161,12 +3723,16 @@ local Defaults; do
 
                 Knob.Position = UDim2.new(0, KnobOffset, 0, 1);
                 ValueLabel.Text = FormatValue(Value);
-                Location[Flag] = Value;
+                local OldValue = Location[Flag];
+                SetFlagValue(Location, Flag, Value, ApiData, false);
 
                 if CurrentValue ~= Value then
                     CurrentValue = Value;
                     if ShouldDispatchCallback(FireCallback) then
                         Callback(Value);
+                        if ApiData and type(ApiData.EmitChanged) == "function" then
+                            ApiData:EmitChanged(Value, OldValue);
+                        end
                     end
                 end
             end
@@ -3213,7 +3779,7 @@ local Defaults; do
             });
 
             self:Resize();
-            local ApiData = {
+            ApiData = {
                 Set = function(self, Value)
                     SetValue(Value, true);
                 end,
@@ -3231,6 +3797,8 @@ local Defaults; do
             local Flag = self:ResolveFlag(Options.flag, Text, "SearchBox");
             local Location = Options.location or self.flags;
             local Callback = Callback or function() end;
+            local ApiData;
+            Library:RegisterFlag(Location, Flag);
 
             local Busy = false;
             local BoxData = Library:Create('Frame', {
@@ -3312,9 +3880,13 @@ local Defaults; do
                                 task.wait();
                                 Busy = false;
 
-                                Location[Flag] = ButtonData.Text;
+                                local OldValue = Location[Flag];
+                                SetFlagValue(Location, Flag, ButtonData.Text, ApiData, false);
                                 if ShouldDispatchCallback(true) then
                                     Callback(Location[Flag]);
+                                    if ApiData and type(ApiData.EmitChanged) == "function" then
+                                        ApiData:EmitChanged(Location[Flag], OldValue);
+                                    end
                                 end
 
                                 ResultContainer.ScrollBarThickness = 0;
@@ -3351,10 +3923,14 @@ local Defaults; do
                 InputBox.Text = TextValue;
                 Busy = false;
 
-                Location[Flag] = TextValue;
+                local OldValue = Location[Flag];
+                SetFlagValue(Location, Flag, TextValue, ApiData, false);
                 Rebuild(TextValue);
                 if ShouldDispatchCallback(FireCallback) then
                     Callback(Location[Flag]);
+                    if ApiData and type(ApiData.EmitChanged) == "function" then
+                        ApiData:EmitChanged(Location[Flag], OldValue);
+                    end
                 end
                 local ParentWindow = self.ParentWindow or self;
                 if ParentWindow and type(ParentWindow.RefreshAutoWidth) == "function" then
@@ -3369,7 +3945,7 @@ local Defaults; do
             });
 
             self:Resize();
-            local ApiData = {
+            ApiData = {
                 Refresh = Reload;
                 Reload = Reload;
                 Input = InputBox;
@@ -3393,8 +3969,9 @@ local Defaults; do
             local Callback = Callback or function() end;
             local ListData = (type(Options.list) == "table" and Options.list or {});
             local DefaultSelection = ListData[1] or "";
+            local ApiData;
 
-            Location[Flag] = DefaultSelection
+            SetFlagValue(Location, Flag, DefaultSelection, ApiData, false);
             local CheckData = Library:Create('Frame', {
                 BackgroundTransparency = 1;
                 Size = UDim2.new(1, 0, 0, 25);
@@ -3444,14 +4021,19 @@ local Defaults; do
             local SelectionLabel = Label:FindFirstChild('Selection');
             local Input;
             local ActiveContainer;
+            Library:RegisterFlag(Location, Flag);
 
             local function SetDropdownValue(NewValue, FireCallback)
                 if NewValue ~= nil then
-                    Location[Flag] = tostring(NewValue);
+                    local OldValue = Location[Flag];
+                    SetFlagValue(Location, Flag, tostring(NewValue), ApiData, false);
                     SelectionLabel.Text = tostring(Location[Flag]);
                     SelectionLabel.TextColor3 = Library.Options.textcolor;
                     if ShouldDispatchCallback(FireCallback) then
                         Callback(Location[Flag]);
+                        if ApiData and type(ApiData.EmitChanged) == "function" then
+                            ApiData:EmitChanged(Location[Flag], OldValue);
+                        end
                     end
                     local ParentWindow = self.ParentWindow or self;
                     if ParentWindow and type(ParentWindow.RefreshAutoWidth) == "function" then
@@ -3596,7 +4178,7 @@ local Defaults; do
             self:Resize();
             local function Reload(self, Array)
                 ListData = (type(Array) == "table" and Array or {});
-                Location[Flag] = ListData[1] or "";
+                SetFlagValue(Location, Flag, (ListData[1] or ""), ApiData, false);
                 CloseDropdown(true);
                 SelectionLabel.Text = ((Location[Flag] ~= nil and Location[Flag] ~= "") and tostring(Location[Flag]) or Name);
                 SelectionLabel.TextColor3 = Library.Options.textcolor;
@@ -3608,7 +4190,7 @@ local Defaults; do
                 end
             });
 
-            local ApiData = {
+            ApiData = {
                 Refresh = Reload;
                 Get = function()
                     return Location[Flag];
@@ -3628,6 +4210,8 @@ local Defaults; do
             local Flag = self:ResolveFlag(Options.flag, Name, "MultiSelect");
             local Callback = Callback or function() end;
             local ListData = Options.list or {};
+            local ApiData = {};
+            Library:RegisterFlag(Location, Flag);
 
             local SearchEnabled = Options.search ~= false;
             local SortList = Options.sort ~= false;
@@ -3743,7 +4327,7 @@ local Defaults; do
                 ApplySelectionData(Options.default);
             end
 
-            Location[Flag] = SelectedData;
+            SetFlagValue(Location, Flag, SelectedData, ApiData, false);
 
             local TitleHeight = 20;
             local SearchHeight = (SearchEnabled and 22 or 0);
@@ -3897,9 +4481,14 @@ local Defaults; do
             end
 
             local function UpdateSelection(DoCallback)
-                Location[Flag] = SelectedData;
+                local SelectedMap = GetSelectedMap();
+                local SelectedArray = GetSelectedArray();
+                SetFlagValue(Location, Flag, SelectedData, ApiData, true);
                 if ShouldDispatchCallback(DoCallback) then
-                    Callback(GetSelectedMap(), GetSelectedArray());
+                    Callback(SelectedMap, SelectedArray);
+                    if ApiData and type(ApiData.EmitChanged) == "function" then
+                        ApiData:EmitChanged(SelectedMap, SelectedArray);
+                    end
                 end
             end
 
@@ -4095,8 +4684,6 @@ local Defaults; do
             self:Resize();
             Render();
 
-            local ApiData = {};
-
             function ApiData:Get(asArray)
                 if asArray then
                     return GetSelectedArray();
@@ -4185,7 +4772,6 @@ local Defaults; do
                     end
                 end
 
-                Location[Flag] = SelectedData;
                 UpdateSelection(FireCallback);
                 Render();
             end
@@ -4780,6 +5366,112 @@ local Defaults; do
         return TableData[Object];
     end
 
+    function Library:OnFlagChanged(FlagName, Callback, Options)
+        if type(FlagName) == "function" and Callback == nil then
+            Callback = FlagName;
+            FlagName = nil;
+        end
+
+        if type(Callback) ~= "function" then
+            return nil, "callback must be a function";
+        end
+
+        local ScopeLocation = nil;
+        if type(Options) == "table" then
+            if type(Options.location) == "table" then
+                ScopeLocation = Options.location;
+            elseif type(Options.scopeLocation) == "table" then
+                ScopeLocation = Options.scopeLocation;
+            end
+        end
+
+        local Key = tostring(FlagName or "");
+        local Listener = {
+            Connected = true;
+            Callback = Callback;
+            Location = ScopeLocation;
+        };
+
+        local Bucket;
+        if Key == "" or Key == "*" then
+            self.FlagChangeAnyListeners = self.FlagChangeAnyListeners or {};
+            Bucket = self.FlagChangeAnyListeners;
+        else
+            self.FlagChangeListeners = self.FlagChangeListeners or {};
+            self.FlagChangeListeners[Key] = self.FlagChangeListeners[Key] or {};
+            Bucket = self.FlagChangeListeners[Key];
+        end
+        table.insert(Bucket, Listener);
+
+        return {
+            Connected = true;
+            Disconnect = function(Self)
+                if Listener.Connected ~= true then
+                    if type(Self) == "table" then
+                        Self.Connected = false;
+                    end
+                    return false;
+                end
+                Listener.Connected = false;
+                Listener.Callback = nil;
+                Listener.Location = nil;
+                if type(Self) == "table" then
+                    Self.Connected = false;
+                end
+                return true;
+            end;
+        };
+    end
+
+    function Library:EmitFlagChanged(FlagName, Location, NewValue, OldValue, Source)
+        local Key = tostring(FlagName or "");
+        if Key == "" then
+            return false;
+        end
+
+        local Payload = {
+            Flag = Key;
+            flag = Key;
+            Location = Location;
+            location = Location;
+            Value = NewValue;
+            value = NewValue;
+            OldValue = OldValue;
+            oldValue = OldValue;
+            Source = Source;
+            source = Source;
+        };
+
+        local ListenersByFlag = self.FlagChangeListeners or {};
+        local FlagListeners = ListenersByFlag[Key];
+        if type(FlagListeners) == "table" then
+            for Index = #FlagListeners, 1, -1 do
+                local Entry = FlagListeners[Index];
+                local Callback = Entry and Entry.Callback;
+                local ScopeLocation = Entry and Entry.Location;
+                if type(Callback) ~= "function" then
+                    table.remove(FlagListeners, Index);
+                elseif ScopeLocation == nil or ScopeLocation == Location then
+                    pcall(Callback, NewValue, OldValue, Payload);
+                end
+            end
+        end
+
+        local AnyListeners = self.FlagChangeAnyListeners or {};
+        for Index = #AnyListeners, 1, -1 do
+            local Entry = AnyListeners[Index];
+            local Callback = Entry and Entry.Callback;
+            local ScopeLocation = Entry and Entry.Location;
+            if type(Callback) ~= "function" then
+                table.remove(AnyListeners, Index);
+            elseif ScopeLocation == nil or ScopeLocation == Location then
+                pcall(Callback, Key, NewValue, OldValue, Payload);
+            end
+        end
+
+        return true;
+    end
+
     function Library:RefreshDependencies()
         local Entries = self.DependencyControls or {};
         local Refreshed = 0;
@@ -4994,6 +5686,18 @@ local Defaults; do
             return false, "preset data must be a table";
         end
 
+        local function AssignFlagValue(Location, FlagName, Value, SourceTag)
+            if type(Location) ~= "table" then
+                return;
+            end
+            local OldValue = Location[FlagName];
+            Location[FlagName] = Value;
+            self:RegisterFlag(Location, FlagName);
+            if OldValue ~= Value then
+                self:EmitFlagChanged(FlagName, Location, Value, OldValue, SourceTag or "ApplyScriptPresetData");
+            end
+        end
+
         local Incoming = {};
         for Key in next, Data do
             local FlagName = tostring(Key or "");
@@ -5010,7 +5714,7 @@ local Defaults; do
                     if type(Locations) == "table" then
                         for _, Location in next, Locations do
                             if type(Location) == "table" then
-                                Location[FlagName] = nil;
+                                AssignFlagValue(Location, FlagName, nil, "ApplyScriptPresetData_Clear");
                             end
                         end
                     end
@@ -5046,7 +5750,7 @@ local Defaults; do
                     if type(Locations) == "table" then
                         for _, Location in next, Locations do
                             if type(Location) == "table" then
-                                Location[FlagName] = Value;
+                                AssignFlagValue(Location, FlagName, Value, "ApplyScriptPresetData_Fallback");
                                 Applied = true;
                             end
                         end
@@ -5057,12 +5761,13 @@ local Defaults; do
                     local FallbackLocations = self.FlagLocations or {};
                     local FirstLocation = FallbackLocations[1];
                     if type(FirstLocation) == "table" then
-                        FirstLocation[FlagName] = Value;
+                        AssignFlagValue(FirstLocation, FlagName, Value, "ApplyScriptPresetData_FirstLocation");
                     end
                 end
             end
         end
 
+        self:RefreshDependencies();
         return true;
     end
 
@@ -5883,6 +6588,10 @@ local Defaults; do
         width = 190;
         minwidth = 170;
         maxwidth = 420;
+        resizable = false;
+        resizeGrip = true;
+        resizeMinWidth = 170;
+        resizeMaxWidth = 420;
         autowidth = false;
         autowidthpadding = 12;
         itemspacing = 0;
@@ -5960,17 +6669,27 @@ local Defaults; do
                 );
                 local MinWidth = math.max(120, math.floor((tonumber(WindowOptions.minwidth) or 170) + 0.5));
                 local MaxWidth = math.max(MinWidth, math.floor((tonumber(WindowOptions.maxwidth) or 420) + 0.5));
+                local ResizeMinWidth = math.max(
+                    MinWidth,
+                    math.floor((tonumber(WindowOptions.resizeMinWidth or WindowOptions.resizeMinWidthPixels) or MinWidth) + 0.5)
+                );
+                local ResizeMaxWidth = math.max(
+                    ResizeMinWidth,
+                    math.floor((tonumber(WindowOptions.resizeMaxWidth or WindowOptions.resizeMaxWidthPixels) or MaxWidth) + 0.5)
+                );
                 local Width = math.clamp(
                     math.floor((tonumber(WindowOptions.width or WindowOptions.windowwidth) or (WindowData.GetWidth and WindowData:GetWidth()) or 190) + 0.5),
-                    MinWidth,
-                    MaxWidth
+                    ResizeMinWidth,
+                    ResizeMaxWidth
                 );
                 local AutoWidth = (WindowOptions.autowidth == true or WindowOptions.autoWidth == true or WindowOptions.autosize == true);
                 local AutoWidthPadding = math.clamp(math.floor((tonumber(WindowOptions.autowidthpadding or WindowOptions.widthpadding) or 12) + 0.5), 0, 80);
 
                 WindowObject.BackgroundColor3 = WindowOptions.topcolor;
-                WindowData.MinWidth = MinWidth;
-                WindowData.MaxWidth = MaxWidth;
+                WindowData.MinWidth = ResizeMinWidth;
+                WindowData.MaxWidth = ResizeMaxWidth;
+                WindowData.Resizable = (WindowOptions.resizable == true);
+                WindowData.ResizeGripEnabled = (WindowOptions.resizeGrip ~= false and WindowOptions.resizable == true);
                 WindowData.AutoWidth = AutoWidth;
                 WindowData.AutoWidthPadding = AutoWidthPadding;
                 if type(WindowData.SetWidth) == "function" then
@@ -6817,7 +7536,7 @@ local Defaults; do
 			
         if (not Library.Container) then
             local ParentGui = ResolveGuiParent();
-            Library.Container = self:Create("ScreenGui", {
+            local RootGui = self:Create("ScreenGui", {
                 self:Create('Frame', {
                     Name = 'Container';
                     Size = UDim2.new(1, -30, 1, 0);
@@ -6826,7 +7545,10 @@ local Defaults; do
                     Active = false;
                 });
                 Parent = ParentGui;
-            }):FindFirstChild('Container');
+            });
+            Library.RootGui = RootGui;
+            table.insert(Library.CleanupInstances, RootGui);
+            Library.Container = RootGui:FindFirstChild('Container');
         end
         if Options then
             local MergedOptions = {};
@@ -6839,16 +7561,146 @@ local Defaults; do
         end
 		
         local WindowData = Types.Window(Name, Library.Options);
-        Dragger.New(WindowData.object);
+        local DragConnections = Dragger.New(WindowData.object);
+        if type(DragConnections) == "table" then
+            WindowData.InternalConnections = WindowData.InternalConnections or {};
+            for _, Connection in next, DragConnections do
+                table.insert(WindowData.InternalConnections, Connection);
+            end
+        end
+        WindowData:BringToFront();
         self:ApplyWindowOptions();
         self:AttachWindowPersistence(WindowData, Name, Options);
         return WindowData
     end
 
+    function Library:Destroy()
+        if self._Destroying == true then
+            return false, "destroy already in progress";
+        end
+        self._Destroying = true;
+
+        if type(self.ActiveColorPopupController) == "function" then
+            pcall(self.ActiveColorPopupController, false, true);
+        end
+        self.ActiveColorPopup = nil;
+        self.ActiveColorPopupController = nil;
+
+        local WindowSnapshot = {};
+        for _, WindowData in next, self.Windows or {} do
+            table.insert(WindowSnapshot, WindowData);
+        end
+        for _, WindowData in next, WindowSnapshot do
+            if type(WindowData) == "table" and type(WindowData.Destroy) == "function" then
+                pcall(function()
+                    WindowData:Destroy();
+                end);
+            elseif type(WindowData) == "table" and WindowData.object and WindowData.object.Parent then
+                pcall(function()
+                    WindowData.object:Destroy();
+                end);
+            end
+        end
+
+        local function DisconnectAll(ConnectionTable)
+            if type(ConnectionTable) ~= "table" then
+                return;
+            end
+            for _, Connection in next, ConnectionTable do
+                if Connection and Connection.Disconnect then
+                    pcall(function()
+                        Connection:Disconnect();
+                    end);
+                end
+            end
+            table.clear(ConnectionTable);
+        end
+
+        DisconnectAll(self.InternalConnections);
+        DisconnectAll(self.DependencyConnections);
+        self.GlobalToggleConnection = nil;
+        self.BindInputBeganConnection = nil;
+        self.BindInputEndedConnection = nil;
+        self.RainbowConnection = nil;
+
+        local Destroyed = {};
+        local function TryDestroy(InstanceObject)
+            if typeof(InstanceObject) ~= "Instance" then
+                return;
+            end
+            if Destroyed[InstanceObject] then
+                return;
+            end
+            Destroyed[InstanceObject] = true;
+            if InstanceObject.Parent then
+                pcall(function()
+                    InstanceObject:Destroy();
+                end);
+            end
+        end
+
+        if type(self.TooltipBindings) == "table" then
+            for _, Entry in next, self.TooltipBindings do
+                if type(Entry) == "table" then
+                    for _, Connection in next, Entry do
+                        if Connection and Connection.Disconnect then
+                            pcall(function()
+                                Connection:Disconnect();
+                            end);
+                        end
+                    end
+                end
+            end
+        end
+
+        TryDestroy(self.RootGui);
+        TryDestroy(self.TooltipGui);
+        TryDestroy(self.NotificationGui);
+        if type(self.CleanupInstances) == "table" then
+            for _, InstanceObject in next, self.CleanupInstances do
+                TryDestroy(InstanceObject);
+            end
+            table.clear(self.CleanupInstances);
+        end
+
+        self.RootGui = nil;
+        self.Container = nil;
+        self.TooltipGui = nil;
+        self.TooltipFrame = nil;
+        self.TooltipTextLabel = nil;
+        self.TooltipBindings = nil;
+        self.NotificationGui = nil;
+        self.NotificationContainer = nil;
+        self.NotificationList = nil;
+        self.Notifications = {};
+
+        self.Queue = {};
+        self.Windows = {};
+        self.Callbacks = {};
+        self.RainbowTable = {};
+        self.Binds = {};
+        self.ToggleRegistry = {};
+        self.FlagLocations = {};
+        self.FlagLocationLookup = {};
+        self.RegisteredFlags = {};
+        self.FlagControllers = {};
+        self.ControlApisByRoot = {};
+        self.ControlApisByFlag = {};
+        self.DependencyControls = {};
+        self.FlagChangeListeners = {};
+        self.FlagChangeAnyListeners = {};
+        self.Binding = false;
+        self.Count = 0;
+        self.Toggled = true;
+        self.Options = setmetatable({}, {__index = Defaults});
+        self._Destroying = false;
+        return true;
+    end
+
     Library.Options = setmetatable({}, {__index = Defaults})
 
     local RainbowHue = 0;
-    RunService.RenderStepped:Connect(function(dt)
+    Library.RainbowConnection = RunService.RenderStepped:Connect(function(dt)
         if #Library.RainbowTable == 0 then
             return;
         end
@@ -6862,7 +7714,8 @@ local Defaults; do
                 table.remove(Library.RainbowTable, Index);
             end
         end
-    end)
+    end);
+    table.insert(Library.InternalConnections, Library.RainbowConnection);
 
     local function NormalizeRuntimeBind(Bind)
         local function GetEnumItemSafe(EnumType, Name)
@@ -6933,6 +7786,7 @@ local Defaults; do
         local GetMode = BindsData and BindsData.GetMode;
         local Mode = NormalizeBindMode(type(GetMode) == "function" and GetMode() or BindsData.Mode);
         local Callback = BindsData and BindsData.Callback;
+        local ApiData = BindsData and BindsData.Api;
         if type(Callback) ~= "function" then
             return;
         end
@@ -6955,6 +7809,9 @@ local Defaults; do
                 SetState(BindsData, NewState, true);
             else
                 Callback(NewState, Input, "toggle_press");
+                if ApiData and type(ApiData.EmitChanged) == "function" then
+                    ApiData:EmitChanged(NewState, Input, "toggle_press");
+                end
             end
             return;
         end
@@ -6968,12 +7825,18 @@ local Defaults; do
                     SetState(BindsData, true, true);
                 else
                     Callback(true, Input, "hold_start");
+                    if ApiData and type(ApiData.EmitChanged) == "function" then
+                        ApiData:EmitChanged(true, Input, "hold_start");
+                    end
                 end
             end
             return;
         end
 
         Callback(Input, nil, "press");
+        if ApiData and type(ApiData.EmitChanged) == "function" then
+            ApiData:EmitChanged(Input, nil, "press");
+        end
     end
 
     local function HandleBindRelease(BindsData, Input)
@@ -6984,6 +7847,7 @@ local Defaults; do
         end
 
         local Callback = BindsData and BindsData.Callback;
+        local ApiData = BindsData and BindsData.Api;
         if type(Callback) ~= "function" then
             return;
         end
@@ -6999,11 +7863,14 @@ local Defaults; do
                 SetState(BindsData, false, true);
             else
                 Callback(false, Input, "hold_end");
+                if ApiData and type(ApiData.EmitChanged) == "function" then
+                    ApiData:EmitChanged(false, Input, "hold_end");
+                end
             end
         end
     end
 
-    UserInputService.InputBegan:Connect(function(Input, Gpe)
+    Library.BindInputBeganConnection = UserInputService.InputBegan:Connect(function(Input, Gpe)
         if Library.Binding or Gpe then
             return;
         end
@@ -7023,9 +7890,10 @@ local Defaults; do
                 HandleBindPress(Index, BindsData, Input);
             end
         end
-    end)
+    end);
+    table.insert(Library.InternalConnections, Library.BindInputBeganConnection);
 
-    UserInputService.InputEnded:Connect(function(Input)
+    Library.BindInputEndedConnection = UserInputService.InputEnded:Connect(function(Input)
         if Library.Binding then
             return;
         end
@@ -7036,7 +7904,8 @@ local Defaults; do
                 HandleBindRelease(BindsData, Input);
             end
         end
-    end)
+    end);
+    table.insert(Library.InternalConnections, Library.BindInputEndedConnection);
 end
 
 return Library
