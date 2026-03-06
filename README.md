@@ -14,7 +14,7 @@ Roblox UI library for script UIs with:
 - Built-in settings window generator
 - Dedicated image preview windows
 
-Current build in this repo: `2026-03-06.54`
+Current build in this repo: `2026-03-06.55`
 
 ## Loadstring
 
@@ -31,8 +31,6 @@ local Flags = {}
 
 local Window = Library:CreateWindow("Example", {
     persistwindow = true,
-    width = 230,
-    autowidth = true,
     itemspacing = 2,
     underlinecolor = "rainbow",
     togglestyle = "checkmark",
@@ -75,8 +73,6 @@ end)
 ```lua
 local Preview = Library:CreateImagePreviewWindow("Avatar Preview", {
     windowOptions = {
-        width = 260,
-        resizable = true,
         persistwindow = true,
     },
     image = "rbxassetid://0",
@@ -177,11 +173,6 @@ Returned by `CreateWindow` (window object only):
 - `Window:SetMinimized(IsMinimized, Animate?)`
 - `Window:SetExpanded(IsExpanded, Animate?)`
 - `Window:GetMinimized()`
-- `Window:SetWidth(NewWidth)`
-- `Window:GetWidth()`
-- `Window:SetAutoWidth(State, RefreshNow?)`
-- `Window:GetAutoWidth()`
-- `Window:RefreshAutoWidth(Force?)`
 - `Window:SetPosition(XOffset, YOffset)`
 - `Window:GetPosition()`
 - `Window:Center()`
@@ -239,12 +230,7 @@ Image preview options:
 
 - `title` (fallback window title if `Name` is omitted)
 - `windowOptions` (full options table forwarded to window creation)
-- `windowWidth` / `width`
-- `windowMinWidth` / `minwidth`
-- `windowMaxWidth` / `maxwidth`
-- `windowResizable` / `resizable`
-- `resizeGrip`, `resizeMinWidth`, `resizeMaxWidth`
-- `windowAutoWidth`, `windowAutoWidthPadding`, `windowItemSpacing`
+- `windowItemSpacing`
 - `persistwindow` / `persistWindow` / `persist`
 - `windowPersistence`, `windowPersistenceOptions`
 - `previewHeight` / `height` (default `180`)
@@ -324,21 +310,6 @@ Destroys all windows and UI roots created by the library, disconnects tracked co
 | `placeholdercolor` | `Color3` | `Color3.fromRGB(255,255,255)` | Placeholder color |
 | `autoscaletext` | `boolean` | `true` | Auto text scaling in `Create()` |
 | `mintextsize` | `number` | `10` | Min size for auto-scaled text |
-| `width` | `number` | `190` | Starting window width |
-| `windowwidth` | alias | - | Alias of `width` |
-| `minwidth` | `number` | `170` | Minimum window width |
-| `maxwidth` | `number` | `420` | Maximum window width |
-| `resizable` | `boolean` | `false` | Enables drag-resize handle |
-| `resizeGrip` | `boolean` | `true` | Shows/hides resize grip when resizable |
-| `resizeMinWidth` | `number` | `170` | Min width when resizing |
-| `resizeMaxWidth` | `number` | `420` | Max width when resizing |
-| `resizeMinWidthPixels` | alias | - | Alias of `resizeMinWidth` |
-| `resizeMaxWidthPixels` | alias | - | Alias of `resizeMaxWidth` |
-| `autowidth` | `boolean` | `false` | Expand width for long text |
-| `autoWidth` | alias | - | Alias of `autowidth` |
-| `autosize` | alias | - | Alias of `autowidth` |
-| `autowidthpadding` | `number` | `12` | Extra horizontal fit padding |
-| `widthpadding` | alias | - | Alias of `autowidthpadding` |
 | `itemspacing` | `number` | `0` | UIList padding between controls |
 | `methodspacing` | alias | - | Alias of `itemspacing` |
 | `controlspacing` | alias | - | Alias of `itemspacing` |
@@ -363,7 +334,6 @@ The window object also contains internal data fields used by the library:
 
 - `object`, `container`, `list`, `options`, `flags`
 - `ParentWindow`, `ParentTabOwner` (tabs)
-- `Width`, `MinWidth`, `MaxWidth`, `AutoWidth`, `AutoWidthPadding`
 - `AutoFlagPrefix`, `Controls`, `Tabs`, `ActiveTab`
 
 ## Container Shared Features
