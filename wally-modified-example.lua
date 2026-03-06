@@ -112,6 +112,43 @@ local function EnsureImagePreviewWindow()
     ImagePreviewWindow = Result
     return ImagePreviewWindow
 end
+
+local ModelPreviewWindow
+local function EnsureModelPreviewWindow()
+    if ModelPreviewWindow and ModelPreviewWindow.Window and ModelPreviewWindow.Window.object and ModelPreviewWindow.Window.object.Parent then
+        return ModelPreviewWindow
+    end
+
+    local Ok, Result = pcall(function()
+        local PreviewWindow = Library:CreateModelPreviewWindow("Wally Practical - Model Preview", {
+            windowOptions = WindowOptions,
+            persistwindow = true,
+            caption = "Drag to rotate | Mouse wheel to zoom",
+            previewHeight = 220,
+            model = LocalPlayer.Character,
+            drag = true,
+            zoom = true,
+            fov = 70,
+            dragSensitivity = 0.35,
+            zoomSensitivity = 2,
+            backgroundColor = Color3.fromRGB(20, 20, 20),
+            borderColor = Color3.fromRGB(65, 65, 65),
+        })
+        if PreviewWindow and PreviewWindow.SetVisible then
+            PreviewWindow:SetVisible(false)
+        end
+        return PreviewWindow
+    end)
+
+    if not Ok then
+        warn("[Wally Modified Example] Model preview init failed:", Result)
+        return nil
+    end
+
+    ModelPreviewWindow = Result
+    return ModelPreviewWindow
+end
+
 local function ColorToRgbText(ColorValue)
     return string.format(
         "%d, %d, %d",
@@ -583,6 +620,71 @@ UtilityWindow:Button("Center Preview Window", function()
     PreviewWindow:Center()
     PreviewWindow:BringToFront()
     StateLabel:Refresh("State: Centered image preview window")
+end)
+
+UtilityWindow:Button("Open Local Character Model Preview", function()
+    local PreviewWindow = EnsureModelPreviewWindow()
+    if not PreviewWindow then
+        StateLabel:Refresh("State: Model preview unavailable")
+        return
+    end
+
+    local Character = LocalPlayer.Character
+    if not Character then
+        StateLabel:Refresh("State: Local character missing")
+        return
+    end
+
+    local OkSet, ErrorMessage = PreviewWindow:SetModel(Character)
+    if not OkSet then
+        StateLabel:Refresh("State: Model preview failed (" .. tostring(ErrorMessage) .. ")")
+        return
+    end
+
+    PreviewWindow:SetCaption(LocalPlayer.Name .. " Character")
+    PreviewWindow:SetVisible(true)
+    PreviewWindow:BringToFront()
+    StateLabel:Refresh("State: Opened local model preview")
+end)
+
+UtilityWindow:Button("Preview Teleport Target Model", function()
+    local PreviewWindow = EnsureModelPreviewWindow()
+    if not PreviewWindow then
+        StateLabel:Refresh("State: Model preview unavailable")
+        return
+    end
+
+    local TargetPlayer = FindPlayerByName(Flags.TeleportTarget)
+    if not TargetPlayer or not TargetPlayer.Character then
+        StateLabel:Refresh("State: Target model unavailable")
+        return
+    end
+
+    local OkSet, ErrorMessage = PreviewWindow:SetModel(TargetPlayer.Character)
+    if not OkSet then
+        StateLabel:Refresh("State: Model preview failed (" .. tostring(ErrorMessage) .. ")")
+        return
+    end
+
+    PreviewWindow:SetCaption(TargetPlayer.Name .. " Character")
+    PreviewWindow:SetVisible(true)
+    PreviewWindow:BringToFront()
+    StateLabel:Refresh("State: Previewing target model")
+end)
+
+UtilityWindow:Button("Toggle Model Preview Window", function()
+    local PreviewWindow = EnsureModelPreviewWindow()
+    if not PreviewWindow then
+        StateLabel:Refresh("State: Model preview unavailable")
+        return
+    end
+
+    local NextVisible = not PreviewWindow:IsVisible()
+    PreviewWindow:SetVisible(NextVisible)
+    if NextVisible then
+        PreviewWindow:BringToFront()
+    end
+    StateLabel:Refresh("State: Model preview visible = " .. tostring(NextVisible))
 end)
 
 UtilityWindow:Section("Runtime API Demo")
