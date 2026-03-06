@@ -50,7 +50,8 @@ local WindowOptions = {
 }
 
 local MainWindow = Library:CreateWindow("Wally Practical - Main", WindowOptions)
-local UtilityWindow = Library:CreateWindow("Wally Practical - Utility", WindowOptions)
+local UtilityWindowA = Library:CreateWindow("Wally Practical - Utility A", WindowOptions)
+local UtilityWindowB = Library:CreateWindow("Wally Practical - Utility B", WindowOptions)
 Library:OnFlagChanged("WalkSpeed", function(NewValue, OldValue)
     print("[OnFlagChanged] WalkSpeed:", OldValue, "->", NewValue)
 end)
@@ -489,38 +490,38 @@ local function ApplyFlagsToControls()
     end
 end
 
-UtilityWindow:Section("Status")
+UtilityWindowA:Section("Status")
 
-local BuildLabel = UtilityWindow:Label("Build: " .. tostring(Library.Build), {
+local BuildLabel = UtilityWindowA:Label("Build: " .. tostring(Library.Build), {
     textSize = 17,
     textColor = Color3.fromRGB(220, 220, 220),
     bgColor = Color3.fromRGB(40, 40, 40),
     borderColor = Color3.fromRGB(65, 65, 65),
 })
 
-local StateLabel = UtilityWindow:Label("State: Ready", {
+local StateLabel = UtilityWindowA:Label("State: Ready", {
     textSize = 17,
     textColor = Color3.fromRGB(255, 255, 255),
     bgColor = Color3.fromRGB(35, 35, 35),
     borderColor = Color3.fromRGB(60, 60, 60),
 })
-UtilityWindow:Label("Window settings moved to dedicated settings window.", {
+UtilityWindowA:Label("Window settings moved to dedicated settings window.", {
     textSize = 16,
     textColor = Color3.fromRGB(220, 220, 220),
     bgColor = Color3.fromRGB(35, 35, 35),
     borderColor = Color3.fromRGB(60, 60, 60),
 })
 
-UtilityWindow:Button("Open Settings Window", function()
+UtilityWindowA:Button("Open Settings Window", function()
     if SettingsWindowApi and SettingsWindowApi.Window and SettingsWindowApi.Window.object then
         SettingsWindowApi.Window.object.Visible = true
     end
     StateLabel:Refresh("State: Opened settings window")
 end)
 
-UtilityWindow:Section("Teleport")
+UtilityWindowA:Section("Teleport")
 
-local RefreshTeleportSearch, TeleportSearchBox = UtilityWindow:SearchBox("Search player name...", {
+local RefreshTeleportSearch, TeleportSearchBox = UtilityWindowA:SearchBox("Search player name...", {
     location = Flags,
     flag = "TeleportTarget",
     list = GetOtherPlayerNames(),
@@ -528,7 +529,7 @@ local RefreshTeleportSearch, TeleportSearchBox = UtilityWindow:SearchBox("Search
     StateLabel:Refresh("State: Teleport target = " .. tostring(ChosenName))
 end)
 
-local TeleportButton = UtilityWindow:Button("Teleport To Target", function()
+local TeleportButton = UtilityWindowA:Button("Teleport To Target", function()
     local TargetPlayer = FindPlayerByName(Flags.TeleportTarget)
     local Character = LocalPlayer.Character
     local RootPart = Character and Character:FindFirstChild("HumanoidRootPart")
@@ -549,9 +550,9 @@ local TeleportButton = UtilityWindow:Button("Teleport To Target", function()
     StateLabel:Refresh("State: Teleported to " .. TargetPlayer.Name)
 end)
 
-UtilityWindow:Section("Image Preview")
+UtilityWindowA:Section("Image Preview")
 
-local PreviewImageSourceBox = UtilityWindow:Box("Preview Image Source", {
+local PreviewImageSourceBox = UtilityWindowA:Box("Preview Image Source", {
     location = Flags,
     flag = "PreviewImageSource",
     type = "string",
@@ -559,7 +560,7 @@ local PreviewImageSourceBox = UtilityWindow:Box("Preview Image Source", {
     tooltip = "rbxassetid://<id>, numeric id, or thumbnail URL.",
 })
 
-UtilityWindow:Button("Apply Preview Image Source", function()
+UtilityWindowA:Button("Apply Preview Image Source", function()
     local PreviewWindow = EnsureImagePreviewWindow()
     if not PreviewWindow then
         StateLabel:Refresh("State: Preview window unavailable")
@@ -577,7 +578,7 @@ UtilityWindow:Button("Apply Preview Image Source", function()
     StateLabel:Refresh("State: Applied preview source")
 end)
 
-UtilityWindow:Button("Use LocalPlayer Thumbnail", function()
+UtilityWindowA:Button("Use LocalPlayer Thumbnail", function()
     local PreviewWindow = EnsureImagePreviewWindow()
     if not PreviewWindow then
         StateLabel:Refresh("State: Preview window unavailable")
@@ -594,7 +595,7 @@ UtilityWindow:Button("Use LocalPlayer Thumbnail", function()
     StateLabel:Refresh("State: Loaded LocalPlayer thumbnail")
 end)
 
-UtilityWindow:Button("Toggle Preview Window", function()
+UtilityWindowA:Button("Toggle Preview Window", function()
     local PreviewWindow = EnsureImagePreviewWindow()
     if not PreviewWindow then
         StateLabel:Refresh("State: Preview window unavailable")
@@ -609,7 +610,7 @@ UtilityWindow:Button("Toggle Preview Window", function()
     StateLabel:Refresh("State: Image preview visible = " .. tostring(NextVisible))
 end)
 
-UtilityWindow:Button("Center Preview Window", function()
+UtilityWindowA:Button("Center Preview Window", function()
     local PreviewWindow = EnsureImagePreviewWindow()
     if not PreviewWindow then
         StateLabel:Refresh("State: Preview window unavailable")
@@ -622,7 +623,7 @@ UtilityWindow:Button("Center Preview Window", function()
     StateLabel:Refresh("State: Centered image preview window")
 end)
 
-UtilityWindow:Button("Open Local Character Model Preview", function()
+UtilityWindowA:Button("Open Local Character Model Preview", function()
     local PreviewWindow = EnsureModelPreviewWindow()
     if not PreviewWindow then
         StateLabel:Refresh("State: Model preview unavailable")
@@ -647,7 +648,7 @@ UtilityWindow:Button("Open Local Character Model Preview", function()
     StateLabel:Refresh("State: Opened local model preview")
 end)
 
-UtilityWindow:Button("Preview Teleport Target Model", function()
+UtilityWindowA:Button("Preview Teleport Target Model", function()
     local PreviewWindow = EnsureModelPreviewWindow()
     if not PreviewWindow then
         StateLabel:Refresh("State: Model preview unavailable")
@@ -672,7 +673,7 @@ UtilityWindow:Button("Preview Teleport Target Model", function()
     StateLabel:Refresh("State: Previewing target model")
 end)
 
-UtilityWindow:Button("Toggle Model Preview Window", function()
+UtilityWindowA:Button("Toggle Model Preview Window", function()
     local PreviewWindow = EnsureModelPreviewWindow()
     if not PreviewWindow then
         StateLabel:Refresh("State: Model preview unavailable")
@@ -687,27 +688,39 @@ UtilityWindow:Button("Toggle Model Preview Window", function()
     StateLabel:Refresh("State: Model preview visible = " .. tostring(NextVisible))
 end)
 
-UtilityWindow:Section("Runtime API Demo")
+UtilityWindowB:Section("Runtime API Demo")
 
-UtilityWindow:Button("Bring Utility To Front", function()
-    UtilityWindow:BringToFront()
-    StateLabel:Refresh("State: Utility window brought to front")
+UtilityWindowB:Button("Bring Utility Windows To Front", function()
+    UtilityWindowA:BringToFront()
+    UtilityWindowB:BringToFront()
+    StateLabel:Refresh("State: Utility windows brought to front")
 end)
 
-UtilityWindow:Button("Center Utility Window", function()
-    UtilityWindow:Center()
-    StateLabel:Refresh("State: Utility window centered")
+UtilityWindowB:Button("Center Utility Windows", function()
+    UtilityWindowA:Center()
+    local PositionA = UtilityWindowA:GetPosition()
+    if PositionA then
+        UtilityWindowB:SetPosition(PositionA.X.Offset + 220, PositionA.Y.Offset)
+    else
+        UtilityWindowB:Center()
+    end
+    StateLabel:Refresh("State: Utility windows centered")
 end)
 
-UtilityWindow:Button("Nudge Utility +20 X", function()
-    local Position = UtilityWindow:GetPosition()
-    if Position then
-        UtilityWindow:SetPosition(Position.X.Offset + 20, Position.Y.Offset)
-        StateLabel:Refresh("State: Utility moved to X=" .. tostring(Position.X.Offset + 20))
+UtilityWindowB:Button("Nudge Utility Windows +20 X", function()
+    local PositionA = UtilityWindowA:GetPosition()
+    if PositionA then
+        UtilityWindowA:SetPosition(PositionA.X.Offset + 20, PositionA.Y.Offset)
+    end
+
+    local PositionB = UtilityWindowB:GetPosition()
+    if PositionB then
+        UtilityWindowB:SetPosition(PositionB.X.Offset + 20, PositionB.Y.Offset)
+        StateLabel:Refresh("State: Utility windows moved +20 X")
     end
 end)
 
-UtilityWindow:Button("Show Notification", function()
+UtilityWindowB:Button("Show Notification", function()
     Library:Notify({
         title = "Wally Modified",
         text = "Notification system is active. This message auto-closes after 4 seconds.",
@@ -716,7 +729,7 @@ UtilityWindow:Button("Show Notification", function()
     StateLabel:Refresh("State: Sent test notification")
 end)
 
-UtilityWindow:Button("Show Level Notifications", function()
+UtilityWindowB:Button("Show Level Notifications", function()
     Library:NotifyInfo("Wally Modified", "Info level toast", 2)
     Library:NotifySuccess("Wally Modified", "Success level toast", 2)
     Library:NotifyWarn("Wally Modified", "Warn level toast", 2)
@@ -724,7 +737,7 @@ UtilityWindow:Button("Show Level Notifications", function()
     StateLabel:Refresh("State: Sent level notifications")
 end)
 
-UtilityWindow:Button("Suspend Callbacks (1s)", function()
+UtilityWindowB:Button("Suspend Callbacks (1s)", function()
     Library:SuspendCallbacks(true)
     StateLabel:Refresh("State: Callbacks suspended for 1 second")
     task.delay(1, function()
@@ -733,17 +746,17 @@ UtilityWindow:Button("Suspend Callbacks (1s)", function()
     end)
 end)
 
-local ReapplyEspButton = UtilityWindow:Button("Reapply ESP", function()
+local ReapplyEspButton = UtilityWindowB:Button("Reapply ESP", function()
     ApplyMovement()
     RefreshEspForAllPlayers()
     StateLabel:Refresh("State: Reapplied movement + ESP")
 end)
 
-UtilityWindow:Button("Call Reapply via :Fire()", function()
+UtilityWindowB:Button("Call Reapply via :Fire()", function()
     ReapplyEspButton:Fire()
 end)
 
-UtilityWindow:Button("Apply Demo Preset", function()
+UtilityWindowB:Button("Apply Demo Preset", function()
     Library:BatchUpdate(function()
         MovementToggle:Set(true)
         BoxEspToggle:Set(true)
@@ -789,7 +802,7 @@ UtilityWindow:Button("Apply Demo Preset", function()
     RefreshEspForAllPlayers()
 end)
 
-UtilityWindow:Button("Refresh Player Lists", function()
+UtilityWindowB:Button("Refresh Player Lists", function()
     local Names = GetOtherPlayerNames()
 
     EspModeDropdown:Refresh({"All", "Enemies", "Teammates"})
@@ -807,7 +820,7 @@ UtilityWindow:Button("Refresh Player Lists", function()
     RefreshEspForAllPlayers()
 end)
 
-UtilityWindow:Button("Ignore First Two Players", function()
+UtilityWindowB:Button("Ignore First Two Players", function()
     local Names = GetOtherPlayerNames()
     if Names[1] then
         EspIgnoredPlayersApi:Set(Names[1], true, false)
@@ -821,18 +834,18 @@ UtilityWindow:Button("Ignore First Two Players", function()
     RefreshEspForAllPlayers()
 end)
 
-UtilityWindow:Button("Use Teleport Button :Fire()", function()
+UtilityWindowB:Button("Use Teleport Button :Fire()", function()
     TeleportButton:Fire()
 end)
 
-UtilityWindow:Button("Box Return Demo (Set JumpPower TextBox)", function()
+UtilityWindowB:Button("Box Return Demo (Set JumpPower TextBox)", function()
     JumpPowerBox.Text = "90"
     Flags.JumpPower = 90
     ApplyMovement()
     StateLabel:Refresh("State: JumpPower set through Box return object")
 end)
 
-UtilityWindow:Button("Destroy Entire UI Library", function()
+UtilityWindowB:Button("Destroy Entire UI Library", function()
     Library:Destroy()
 end)
 
