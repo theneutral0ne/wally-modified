@@ -18,7 +18,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-05.46",
+    Build = "2026-03-05.47",
     BindDebug = false
 };
 local Defaults; do
@@ -1277,17 +1277,21 @@ local Defaults; do
                 });
             });
 
-            local ModalBlocker = Library:Create('Frame', {
+            local ModalBlocker = Library:Create('TextButton', {
                 Name = 'ColorPickerModalBlocker';
                 Visible = false;
+                Text = "";
+                AutoButtonColor = false;
                 BackgroundTransparency = 1;
                 BorderSizePixel = 0;
                 Active = true;
+                Selectable = false;
                 Size = UDim2.new(1, 0, 1, 0);
                 Position = UDim2.new(0, 0, 0, 0);
                 ZIndex = 40;
                 Parent = PopupParent;
             });
+            PopupData.Parent = ModalBlocker;
 
             local function SetGuiZIndex(Root, Z)
                 if Root:IsA("GuiObject") then
@@ -1724,7 +1728,14 @@ local Defaults; do
 
             ModalBlocker.InputBegan:Connect(function(Input)
                 if PopupOpen and IsPointerInput(Input) then
-                    SetPopupVisible(false, false);
+                    local PointerPos = ResolvePointerPosition(Input);
+                    if not IsPointInsideGui(PopupData, PointerPos) then
+                        task.defer(function()
+                            if PopupOpen then
+                                SetPopupVisible(false, false);
+                            end
+                        end);
+                    end
                 end
             end);
 
