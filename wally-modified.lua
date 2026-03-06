@@ -19,7 +19,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-06.60",
+    Build = "2026-03-06.61",
     BindDebug = false,
     CallbackSuspendDepth = 0,
     BatchUpdateDepth = 0,
@@ -1909,6 +1909,10 @@ local Defaults; do
                     BorderColor3 = Library.Options.bordercolor;
                     PlaceholderColor3 = Library.Options.placeholdercolor;
                     TextScaled = false;
+                    TextWrapped = false;
+                    TextTruncate = Enum.TextTruncate.AtEnd;
+                    TextXAlignment = Enum.TextXAlignment.Left;
+                    ClearTextOnFocus = false;
                 });
                 Parent = self.container;
             });
