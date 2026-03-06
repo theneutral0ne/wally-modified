@@ -19,7 +19,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-06.59",
+    Build = "2026-03-06.60",
     BindDebug = false,
     CallbackSuspendDepth = 0,
     BatchUpdateDepth = 0,
@@ -4929,20 +4929,26 @@ local Defaults; do
         end);
         Connections[#Connections + 1] = Target.AncestryChanged:Connect(function(_, ParentData)
             if not ParentData then
-                if self.ActiveTooltipSource == Target then
-                    self:HideTooltip();
-                end
-                local Entry = self.TooltipBindings and self.TooltipBindings[Target];
-                if type(Entry) == "table" then
-                    for _, Connection in next, Entry do
-                        if Connection and Connection.Disconnect then
-                            Connection:Disconnect();
+                task.defer(function()
+                    if Target.Parent then
+                        return;
+                    end
+
+                    if self.ActiveTooltipSource == Target then
+                        self:HideTooltip();
+                    end
+                    local Entry = self.TooltipBindings and self.TooltipBindings[Target];
+                    if type(Entry) == "table" then
+                        for _, Connection in next, Entry do
+                            if Connection and Connection.Disconnect then
+                                Connection:Disconnect();
+                            end
                         end
                     end
-                end
-                if self.TooltipBindings then
-                    self.TooltipBindings[Target] = nil;
-                end
+                    if self.TooltipBindings then
+                        self.TooltipBindings[Target] = nil;
+                    end
+                end);
             end
         end);
 
