@@ -1,19 +1,19 @@
 # Wally Modified UI Library
 
-Wally Modified is a Roblox UI library focused on practical script UIs with:
-- Window + section/control building
-- Script-wide flags
-- Advanced keybind modes
-- Color picker with wheel + hex/rgb + shade + transparency
-- Dependency-based visibility/enabled states
-- Search/filtering
-- Virtualized dropdown/list rendering for large datasets
-- Script preset save/load/import/export
-- Script-based window position persistence
+Roblox UI library for script UIs with:
+- Draggable windows and containerized controls
+- Tabs and subtabs
+- Shared styling system
+- Keybind modes (`press`, `toggle`, `hold`, `always`)
+- Color picker popup (wheel + shade + alpha + HEX + RGB)
+- Dependency-based visibility/enabled rules
+- Runtime control lookup by flag/object
+- Script-wide preset save/load/import/export with schema migration
+- Script-based window persistence
 - Toast notifications
 - Built-in settings window generator
 
-Current build in this repo: `2026-03-06.52`.
+Current build in this repo: `2026-03-06.52`
 
 ## Loadstring
 
@@ -28,13 +28,13 @@ local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/thene
 
 local Flags = {}
 
-local Window = Library:CreateWindow("My Script", {
-    underlinecolor = "rainbow",
+local Window = Library:CreateWindow("Example", {
     persistwindow = true,
     width = 230,
     autowidth = true,
     itemspacing = 2,
-    togglestyle = "checkmark", -- or "fill"
+    underlinecolor = "rainbow",
+    togglestyle = "checkmark",
 })
 
 Window:Section("Main")
@@ -43,215 +43,324 @@ Window:Toggle("Enabled", {
     location = Flags,
     flag = "Enabled",
     default = true,
-}, function(Value)
-    print("Enabled:", Value)
+}, function(State)
+    print("Enabled:", State)
 end)
 
-Window:Slider("Speed", {
+Window:Slider("WalkSpeed", {
     location = Flags,
-    flag = "Speed",
+    flag = "WalkSpeed",
     min = 16,
     max = 120,
     default = 16,
     precise = true,
     decimals = 1,
-    valueWidth = 44,
 }, function(Value)
-    print("Speed:", Value)
+    print("WalkSpeed:", Value)
 end)
 
-Window:Bind("Toggle UI", {
+Window:Bind("ESP Toggle Bind", {
     location = Flags,
-    flag = "UiBind",
+    flag = "EspBind",
     default = Enum.KeyCode.P,
-    mode = "press",
-}, function()
-    print("Pressed bind")
+    mode = "toggle",
+}, function(StateOrInput, Binding, Event)
+    print("Bind callback:", StateOrInput, Binding, Event)
 end)
 ```
 
-## Core Concepts
+## Complete Method Index
 
-### 1) Window Objects
-`Library:CreateWindow(...)` returns a window object with control creation methods:
-- `Section`
-- `Label`
-- `Button`
-- `Toggle`
-- `Slider`
-- `Box`
-- `Bind`
-- `Dropdown`
-- `SearchBox`
-- `ColorPicker`
-- `MultiSelectList`
-- `SearchBar`
-- `Tab` / `CreateTab`
+This index covers every current method defined with `function Library:...` and `function Types:...` in `wally-modified.lua`.
 
-Window objects also expose:
-- `SetMinimized(IsMinimized, Animate?)`
-- `SetExpanded(IsExpanded, Animate?)`
-- `GetMinimized()`
-- `SetWidth(NewWidth)`
-- `GetWidth()`
-- `SetAutoWidth(Boolean, RefreshNow?)`
-- `GetAutoWidth()`
-- `RefreshAutoWidth(Force?)`
+### Library Methods
 
-### 2) Flags + Location
-Most interactive controls support:
-- `location`: table where values are stored (default: window `flags` table)
-- `flag`: key name in that table
+- `Library:Create(ClassName, Data)`
+- `Library:EnsureTooltipGui()`
+- `Library:HideTooltip()`
+- `Library:ShowTooltip(Source, TextResolver)`
+- `Library:AttachTooltip(Target, TextOrResolver)`
+- `Library:EnsureNotificationContainer()`
+- `Library:Notify(Title, Text, Duration, Options)`
+- `Library:CreateNotification(...)`
+- `Library:Notification(...)`
+- `Library:NotifyInfo(Title, Text, Duration, Options)`
+- `Library:NotifySuccess(Title, Text, Duration, Options)`
+- `Library:NotifyWarn(Title, Text, Duration, Options)`
+- `Library:NotifyError(Title, Text, Duration, Options)`
+- `Library:GetControlApiByFlag(FlagName)`
+- `Library:GetControlApiByObject(Object)`
+- `Library:RefreshDependencies()`
+- `Library:AreCallbacksSuspended()`
+- `Library:SuspendCallbacks(State?)`
+- `Library:ResumeCallbacks()`
+- `Library:BeginBatchUpdate(Options?)`
+- `Library:EndBatchUpdate(Context?, Options?)`
+- `Library:BatchUpdate(Worker, Options?)`
+- `Library:RegisterFlagLocation(Location)`
+- `Library:RegisterFlag(Location, Flag)`
+- `Library:RegisterFlagController(Location, Flag, Controller)`
+- `Library:CollectScriptPresetData()`
+- `Library:ApplyScriptPresetData(Data, ShouldClear?)`
+- `Library:CreatePresetManager(ScriptKeyOrOptions?, MaybeOptions?)`
+- `Library:CreateScriptPresetManager(ScriptKeyOrOptions?, MaybeOptions?)`
+- `Library:GetWindowOptions()`
+- `Library:ApplyWindowOptions()`
+- `Library:SetWindowOptions(NewOptions, ApplyNow?)`
+- `Library:UpdateWindowOptions(NewOptions, ApplyNow?)`
+- `Library:SettingsWindow(Options?)`
+- `Library:SettingsWindows(Options?)`
+- `Library:GetAutoScriptStorageKey()`
+- `Library:AttachWindowPersistence(WindowData, WindowName, Options?)`
+- `Library:CreateWindow(Name, Options?)`
 
-If `flag` is omitted, Wally auto-generates one.
+### Container/Window Object Methods
 
-### 3) Global Hide/Show Key
-Press `RightControl` to toggle all windows visibility.
+Every window and tab container object is a `Types` object.
 
-### 4) Common Control Features
-All controls go through a common feature layer and usually support:
-- Tooltip text: `tooltip` / `help` / `description` / `hint`
-- Visibility: `visible`
-- Enabled state: `enabled`
-- Visibility dependency: `dependsOn` / `visibleWhen` / `showWhen`
-- Enabled dependency: `enabledWhen` / `enableWhen`
-- Search registration skip: `searchIgnore = true`
+- `Container:Resize()`
+- `Container:GetOrder()`
+- `Container:ResolveFlag(ProvidedFlag, Name, Kind)`
+- `Container:ApplyControlSearchFilter()`
+- `Container:SetSearchQuery(Query)`
+- `Container:AttachControlFeatures(Root, Options, Api, InteractiveTargets, SearchText)`
+- `Container:Tab(Name, Options?)`
+- `Container:CreateTab(Name, Options?)`
+- `Container:SubTab(Name, Options?)`
+- `Container:CreateSubTab(Name, Options?)`
+- `Container:SearchBar(Name?, Options?, Callback?)`
+- `Container:CreateSearchBar(Name?, Options?, Callback?)`
+- `Container:Toggle(Name, Options?, Callback?)`
+- `Container:Button(Name, Callback)`
+- `Container:Button(Name, Options, Callback)`
+- `Container:Box(Name, Options?, Callback?)`
+- `Container:Bind(Name, Options?, Callback?)`
+- `Container:Section(Name, Options?)`
+- `Container:Label(Name, Options?)`
+- `Container:ColorPicker(Name, Options?, Callback?)`
+- `Container:Slider(Name, Options?, Callback?)`
+- `Container:SearchBox(PlaceholderText, Options?, Callback?)`
+- `Container:Dropdown(Name, Options?, Callback?)`
+- `Container:MultiSelectList(Name, Options?, Callback?)`
 
-Every returned control API also gets common methods:
-- `SetVisible(State)`
-- `GetVisible()`
-- `SetEnabled(State)`
-- `GetEnabled()`
-- `SetDependency(Rule)` (visibility rule)
-- `SetVisibilityDependency(Rule)`
-- `SetEnabledDependency(Rule)`
-- `SetTooltip(Text)`
-- `RefreshDependency()`
+### Extra WindowData Methods
 
-## Dependency Rule Shapes
+Returned by `CreateWindow` (window object only):
 
-Rule can be:
-- `nil` -> always passes
-- `string` -> flag name; truthy check
-- `function(Location, Library) -> boolean`
-- object rule with a `flag`
-- array of rules with mode `all` or `any` (`operator` also accepted)
+- `Window:SetMinimized(IsMinimized, Animate?)`
+- `Window:SetExpanded(IsExpanded, Animate?)`
+- `Window:GetMinimized()`
+- `Window:SetWidth(NewWidth)`
+- `Window:GetWidth()`
+- `Window:SetAutoWidth(State, RefreshNow?)`
+- `Window:GetAutoWidth()`
+- `Window:RefreshAutoWidth(Force?)`
 
-Object rule fields:
-- `flag = "MyFlag"`
-- `value` / `equals` / `is`
-- `notValue` / `notEquals`
-- `min` / `max` (numeric)
-- `exists = true/false`
-- `predicate = function(value, location, library) -> boolean`
+## Runtime Fields
 
-Example:
+Important runtime fields on the library object:
 
-```lua
-enabledWhen = {
-    flag = "AdvancedEnabled",
-    value = true,
-}
-```
+- `Library.Build` (`string`)
+- `Library.BindDebug` (`boolean`, default `false`)
+- `Library.Options` (active style table with defaults fallback)
+- `Library.Container` (main root `Frame` under a `ScreenGui`)
+- `Library.Windows` (active windows)
+- `Library.Binds` (active bind registry)
+- `Library.Toggled` (global visibility state toggled by `RightControl`)
+- `Library.CallbackSuspendDepth`
+- `Library.BatchUpdateDepth`
+
+## Global Behavior
+
+- Press `RightControl` to hide/show all created windows.
+- Text controls are auto-scaled by default (`autoscaletext = true`) via `UITextSizeConstraint`.
+- `flag` is optional on most controls. If omitted, Wally auto-generates a unique flag.
+- Callback dispatch is suppressed when:
+  - `FireCallback == false` was passed to a setter that supports it, or
+  - callback suspension depth is above `0`.
 
 ## Window API
 
 ### `Library:CreateWindow(Name, Options?)`
-Creates a draggable window.
+
+Creates one draggable window and returns `WindowData`.
+
+Important behavior:
+
+- Passing `Options` updates `Library.Options` (global active style table for subsequent controls/windows).
+- Calls `ApplyWindowOptions()` after creation.
+- Calls `AttachWindowPersistence(...)` automatically based on persistence options.
 
 ### `Library:GetWindowOptions()`
-Returns copy of current window option table.
+
+Returns a shallow copy of the currently active options table.
 
 ### `Library:SetWindowOptions(NewOptions, ApplyNow?)`
-Merges options into current window options and updates existing windows.
+
+Merges keys into active options and into each existing window's options table.
+
+- If `ApplyNow ~= false`, calls `ApplyWindowOptions()`.
 
 ### `Library:UpdateWindowOptions(NewOptions, ApplyNow?)`
+
 Alias of `SetWindowOptions`.
 
 ### `Library:ApplyWindowOptions()`
-Re-applies style options to all windows/registered controls.
 
-## Window Options
+Re-applies visual options to current windows and registered toggle visuals.
 
-Defaults:
+### Window Options (Defaults + Aliases)
 
-| Option | Type | Default |
-|---|---|---|
-| `topcolor` | `Color3` | `Color3.fromRGB(30,30,30)` |
-| `titlecolor` | `Color3` | `Color3.fromRGB(255,255,255)` |
-| `underlinecolor` | `Color3` or `"rainbow"` | `Color3.fromRGB(0,255,140)` |
-| `bgcolor` | `Color3` | `Color3.fromRGB(35,35,35)` |
-| `boxcolor` | `Color3` | `Color3.fromRGB(35,35,35)` |
-| `btncolor` | `Color3` | `Color3.fromRGB(25,25,25)` |
-| `dropcolor` | `Color3` | `Color3.fromRGB(25,25,25)` |
-| `sectncolor` | `Color3` | `Color3.fromRGB(25,25,25)` |
-| `bordercolor` | `Color3` | `Color3.fromRGB(60,60,60)` |
-| `font` | `Enum.Font` | `Enum.Font.SourceSans` |
-| `titlefont` | `Enum.Font` | `Enum.Font.Code` |
-| `fontsize` | `number` | `17` |
-| `titlesize` | `number` | `18` |
-| `textstroke` | `number` | `1` |
-| `titlestroke` | `number` | `1` |
-| `strokecolor` | `Color3` | `Color3.fromRGB(0,0,0)` |
-| `textcolor` | `Color3` | `Color3.fromRGB(255,255,255)` |
-| `titletextcolor` | `Color3` | `Color3.fromRGB(255,255,255)` |
-| `autoscaletext` | `boolean` | `true` |
-| `mintextsize` | `number` | `10` |
-| `width` | `number` | `190` |
-| `minwidth` | `number` | `170` |
-| `maxwidth` | `number` | `420` |
-| `autowidth` | `boolean` | `false` |
-| `autowidthpadding` | `number` | `12` |
-| `itemspacing` | `number` | `0` |
-| `methodspacing` | `number` | alias for spacing |
-| `controlspacing` | `number` | alias for spacing |
-| `spacing` | `number` | alias for spacing |
-| `togglestyle` | `"checkmark"` / `"fill"` | `"checkmark"` |
-| `toggleoncolor` | `Color3` | `Color3.fromRGB(0,255,140)` |
-| `toggleoffcolor` | `Color3` | `Color3.fromRGB(35,35,35)` |
-| `notifybgcolor` | `Color3` | `Color3.fromRGB(28,28,28)` |
-| `notifybordercolor` | `Color3` | `Color3.fromRGB(62,62,62)` |
-| `notifyaccentcolor` | `Color3` | `Color3.fromRGB(0,255,140)` |
-| `notifytitlecolor` | `Color3` | `Color3.fromRGB(255,255,255)` |
-| `notifytextcolor` | `Color3` | `Color3.fromRGB(230,230,230)` |
-| `notifywidth` | `number` | `280` |
-| `notifyduration` | `number` | `4` |
-| `notifymax` | `number` | `6` |
-| `notifypadding` | `number` | `6` |
-| `persistwindow` | `boolean` | `false` |
-| `placeholdercolor` | `Color3` | `Color3.fromRGB(255,255,255)` |
-| `titlestrokecolor` | `Color3` | `Color3.fromRGB(0,0,0)` |
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `topcolor` | `Color3` | `Color3.fromRGB(30,30,30)` | Window title bar color |
+| `titlecolor` | `Color3` | `Color3.fromRGB(255,255,255)` | Legacy field |
+| `underlinecolor` | `Color3` or `"rainbow"` | `Color3.fromRGB(0,255,140)` | Window underline |
+| `bgcolor` | `Color3` | `Color3.fromRGB(35,35,35)` | Window content background |
+| `boxcolor` | `Color3` | `Color3.fromRGB(35,35,35)` | Text box backgrounds |
+| `btncolor` | `Color3` | `Color3.fromRGB(25,25,25)` | Button backgrounds |
+| `dropcolor` | `Color3` | `Color3.fromRGB(25,25,25)` | Dropdown/search backgrounds |
+| `sectncolor` | `Color3` | `Color3.fromRGB(25,25,25)` | Section/label backgrounds |
+| `bordercolor` | `Color3` | `Color3.fromRGB(60,60,60)` | Border color |
+| `font` | `Enum.Font` | `Enum.Font.SourceSans` | Base font |
+| `titlefont` | `Enum.Font` | `Enum.Font.Code` | Window title font |
+| `fontsize` | `number` | `17` | Base text size |
+| `titlesize` | `number` | `18` | Title text size |
+| `textstroke` | `number` | `1` | Text stroke transparency |
+| `titlestroke` | `number` | `1` | Title stroke transparency |
+| `strokecolor` | `Color3` | `Color3.fromRGB(0,0,0)` | Text stroke color |
+| `textcolor` | `Color3` | `Color3.fromRGB(255,255,255)` | Base text color |
+| `titletextcolor` | `Color3` | `Color3.fromRGB(255,255,255)` | Window title text color |
+| `titlestrokecolor` | `Color3` | `Color3.fromRGB(0,0,0)` | Window title stroke color |
+| `placeholdercolor` | `Color3` | `Color3.fromRGB(255,255,255)` | Placeholder color |
+| `autoscaletext` | `boolean` | `true` | Auto text scaling in `Create()` |
+| `mintextsize` | `number` | `10` | Min size for auto-scaled text |
+| `width` | `number` | `190` | Starting window width |
+| `windowwidth` | alias | - | Alias of `width` |
+| `minwidth` | `number` | `170` | Minimum window width |
+| `maxwidth` | `number` | `420` | Maximum window width |
+| `autowidth` | `boolean` | `false` | Expand width for long text |
+| `autoWidth` | alias | - | Alias of `autowidth` |
+| `autosize` | alias | - | Alias of `autowidth` |
+| `autowidthpadding` | `number` | `12` | Extra horizontal fit padding |
+| `widthpadding` | alias | - | Alias of `autowidthpadding` |
+| `itemspacing` | `number` | `0` | UIList padding between controls |
+| `methodspacing` | alias | - | Alias of `itemspacing` |
+| `controlspacing` | alias | - | Alias of `itemspacing` |
+| `spacing` | alias | - | Alias of `itemspacing` |
+| `togglestyle` | `"checkmark"` or `"fill"` | `"checkmark"` | Default toggle style |
+| `toggleoncolor` | `Color3` | `Color3.fromRGB(0,255,140)` | Filled-style on color |
+| `toggleoffcolor` | `Color3` | `Color3.fromRGB(35,35,35)` | Filled-style off color |
+| `notifybgcolor` | `Color3` | `Color3.fromRGB(28,28,28)` | Notification background |
+| `notifybordercolor` | `Color3` | `Color3.fromRGB(62,62,62)` | Notification border |
+| `notifyaccentcolor` | `Color3` | `Color3.fromRGB(0,255,140)` | Notification accent |
+| `notifytitlecolor` | `Color3` | `Color3.fromRGB(255,255,255)` | Notification title color |
+| `notifytextcolor` | `Color3` | `Color3.fromRGB(230,230,230)` | Notification body color |
+| `notifywidth` | `number` | `280` | Notification width |
+| `notifyduration` | `number` | `4` | Default duration |
+| `notifymax` | `number` | `6` | Max visible notifications |
+| `notifypadding` | `number` | `6` | Notification list padding |
+| `persistwindow` | `boolean` | `false` | Enables window persistence attach |
 
-## Tabs and Search
+### WindowData Fields
 
-### `Window:Tab(Name, Options?)`
-### `Window:CreateTab(Name, Options?)`
-### `Tab:SubTab(Name, Options?)`
-### `Tab:CreateSubTab(Name, Options?)`
+The window object also contains internal data fields used by the library:
 
-`Tab` options:
-- `headerHeight` or `tabHeaderHeight`: tab button row height
+- `object`, `container`, `list`, `options`, `flags`
+- `ParentWindow`, `ParentTabOwner` (tabs)
+- `Width`, `MinWidth`, `MaxWidth`, `AutoWidth`, `AutoWidthPadding`
+- `AutoFlagPrefix`, `Controls`, `Tabs`, `ActiveTab`
 
-Tabs return another container object with the same control methods.
+## Container Shared Features
+
+All control APIs pass through `AttachControlFeatures`, so controls generally support these option keys:
+
+- `visible` (`boolean`, default true)
+- `enabled` (`boolean`, default true)
+- `dependsOn` / `visibleWhen` / `showWhen` (visibility rule)
+- `enabledWhen` / `enableWhen` (enabled rule)
+- `tooltip` / `help` / `description` / `hint` (tooltip text)
+- `searchIgnore` (`true` to skip SearchBar filtering)
+
+All returned control APIs also gain:
+
+- `SetVisible(State)`
+- `GetVisible()`
+- `SetEnabled(State)`
+- `GetEnabled()`
+- `SetDependency(Rule)`
+- `SetVisibilityDependency(Rule)`
+- `SetEnabledDependency(Rule)`
+- `SetTooltip(TextOrNil)`
+- `RefreshDependency()`
+- `SetSearchMatch(IsMatch)` (internal but available)
+
+### Dependency Rule Shapes
+
+A dependency rule can be:
+
+- `nil` -> passes
+- `string` -> truthy check of that flag
+- `function(Location, Library) -> boolean`
+- object rule with `flag` + constraints
+- array of rules with `mode`/`operator` (`all` or `any`)
+- plain map `{ FlagA = ExpectedValue, FlagB = ExpectedValue }`
+
+Object rule fields:
+
+- `flag`
+- `predicate(value, location, library)`
+- `exists` (`true`/`false`)
+- `min`
+- `max`
+- `notValue`, `notEquals`
+- `value`, `equals`, `is`
+
+## Tabs and Search Filter
+
+### `Container:Tab(Name, Options?)`
+### `Container:CreateTab(Name, Options?)`
+### `Container:SubTab(Name, Options?)`
+### `Container:CreateSubTab(Name, Options?)`
+
+Creates/returns a tab container (same control creation methods as a window).
+
+`Options`:
+
+- `headerHeight` / `tabHeaderHeight` (`16..30`, default `22`)
 
 ### `Container:SearchBar(Name?, Options?, Callback?)`
-Adds a text search filter for controls in the current container/tab.
+### `Container:CreateSearchBar(Name?, Options?, Callback?)`
 
-SearchBar API:
+Adds a control filter box for current container/tab.
+
+`SearchBar` options:
+
+- `default` (initial text)
+- `placeholder` (fallback display text)
+
+`SearchBar` API:
+
 - `Set(Value, FireCallback?)`
 - `Get()`
 - `Clear(FireCallback?)`
-- `Input` (`TextBox` instance)
+- `Input` (`TextBox`)
 
-## Control API Reference
+Behavior:
 
-### Section
-`Container:Section(Name, Options?)`
+- Filters controls by search text registered in `AttachControlFeatures`.
+- Created with `searchIgnore = true` automatically.
 
-### Label
-`Container:Label(Name, Options?)`
+## Controls
 
-Label options:
+### `Container:Section(Name, Options?)`
+
+Visual section header. Returns API object with shared common feature methods only.
+
+### `Container:Label(Name, Options?)`
+
+Options:
+
 - `text` / `Text`
 - `textSize` / `TextSize`
 - `textColor` / `TextColor`
@@ -261,195 +370,237 @@ Label options:
 - `backgroundTransparency` / `BgTransparency`
 
 Label API:
+
 - `Refresh(NewText)`
 - `SetColor(Color3)`
 - `SetBackground(Color3)`
 
-### Button
-`Container:Button(Name, Callback)`
-`Container:Button(Name, Options, Callback)`
+### `Container:Button(Name, Callback)`
+### `Container:Button(Name, Options, Callback)`
 
 Button API:
+
 - `Fire()`
 
-### Toggle
-`Container:Toggle(Name, Options, Callback?)`
+### `Container:Toggle(Name, Options?, Callback?)`
 
-Toggle options:
-- `default`
-- `location`
+Options:
+
+- `location` (default container/window `flags`)
 - `flag`
-- `togglestyle` / `toggleStyle`
+- `default` (`boolean`)
+- `togglestyle` / `toggleStyle` (`checkmark` or fill-style names)
 - `toggleoncolor` / `oncolor`
 - `toggleoffcolor` / `offcolor`
 
-Toggle callback:
+Callback:
+
 - `function(IsOn) end`
 
 Toggle API:
+
 - `Set(Boolean)`
 - `Get()`
 
-### Slider
-`Container:Slider(Name, Options, Callback?)`
+Note:
 
-Slider options:
+- `Set` always fires callback unless callbacks are globally suspended.
+
+### `Container:Slider(Name, Options?, Callback?)`
+
+Options:
+
 - `location`
 - `flag`
-- `min`
-- `max`
-- `default`
-- `precise` (`true` for decimals, `false` for integer)
-- `decimals` (0-6)
-- `valueWidth` / `valuewidth` / `valueLabelWidth` (new)
+- `min` (default `0`)
+- `max` (default `1`)
+- `default` (defaults to `min`)
+- `precise` (`true` for decimals)
+- `decimals` (`0..6`, default `2`)
+- `valueWidth` / `valuewidth` / `valueLabelWidth` (`24..80`, default `40`)
 
-Slider callback:
+Callback:
+
 - `function(Value) end`
 
 Slider API:
+
 - `Set(Value)`
 - `Get()`
 
-### Box
-`Container:Box(Name, Options, Callback?)`
+Notes:
 
-Box options:
+- If `min > max`, values are swapped.
+- Non-precise sliders are integer (`math.floor`).
+
+### `Container:Box(Name, Options?, Callback?)`
+
+Options:
+
 - `location`
 - `flag`
-- `type` = `"number"` or `"string"`
+- `type` (`"number"` or `"string"`)
 - `default`
-- `min`
-- `max`
+- `min` (number mode)
+- `max` (number mode)
 
-Box callback:
+Callback:
+
 - `function(NewValue, OldValue, FocusLostEventData) end`
 
-Box return value:
-- Wrapped API object + direct `TextBox` instance behavior
-- Includes:
+Box return:
+
+- Wrapped API that also proxies to underlying `TextBox` members/methods.
+- Exposes:
   - `Object` / `TextBox`
-  - `Set(Value, FireCallback?)`
   - `Get()`
+  - `Set(Value, FireCallback?)`
 
-### Bind
-`Container:Bind(Name, Options, Callback?)`
+### `Container:Bind(Name, Options?, Callback?)`
 
-Bind options:
+Options:
+
 - `location`
 - `flag`
-- `default` (`Enum.KeyCode` or allowed `Enum.UserInputType`)
-- `kbonly` (keyboard only)
-- `mode` / `bindmode` / `keybindmode`: `"press"`, `"toggle"`, `"hold"`, `"always"`
-- `modeflag` / `modeFlag` (where mode string is stored)
+- `default` (`Enum.KeyCode`, allowed `Enum.UserInputType`, input-object/string forms)
+- `kbonly` (`true` blocks mouse binds)
+- `mode` / `bindmode` / `keybindmode` (`press`, `toggle`, `hold`, `always`)
+- `modeflag` / `modeFlag` (storage key for mode string; default `<flag>_Mode`)
 
-Bind behavior:
-- Escape while rebinding cancels
-- Backspace/Delete clears
-- If `kbonly == false`, `MouseButton1` and `MouseButton2` are allowed
+Bind UI rebind behavior:
+
+- Click bind box -> capture mode (`...`)
+- `Escape` cancels
+- `Backspace`/`Delete` clears bind
+- Keyboard keys are accepted except banned (`Return`, `Space`, `Tab`, `Unknown`)
+- Mouse binds allowed only when `kbonly ~= true` (`MouseButton1`, `MouseButton2`)
 
 Bind API:
-- `Set(NewBinding, FireCallback?)`
-- `Clear(FireCallback?)`
+
+- `Set(NewBinding, FireCallback?) -> (boolean, valueOrError)`
+- `Clear(FireCallback?) -> boolean`
 - `Get()`
-- `SetMode(NewMode, FireCallback?)`
+- `SetMode(NewMode, FireCallback?) -> normalizedMode`
 - `GetMode()`
 - `GetState()`
 - `SetState(NewState, FireCallback?)`
 
-Callback shape by mode:
-- `press`: `Callback(Input, nil, "press")`
-- `toggle`: `Callback(BooleanState, Binding, "toggle_*")`
-- `hold`: `Callback(BooleanState, Binding, "hold_start"/"hold_end")`
-- `always`: called with true on mode enter and false on exit
+Bind callback payloads:
 
-### Dropdown
-`Container:Dropdown(Name, Options, Callback?)`
+- `press`: `Callback(InputObject, nil, "press")`
+- `toggle`: state events such as `"toggle_press"` / `"toggle_state"`
+- `hold`: `"hold_start"` / `"hold_end"`
+- `always`: `"always_start"` / `"always_end"`
 
-Dropdown options:
+Notes:
+
+- Runtime bind processing is ignored while callbacks are suspended.
+- Initial `always` mode invokes start callback once on creation.
+
+### `Container:Dropdown(Name, Options?, Callback?)`
+
+Options:
+
 - `location`
 - `flag`
-- `list` (array of strings)
+- `list` (array)
 
-Dropdown callback:
+Callback:
+
 - `function(SelectedText) end`
 
 Dropdown API:
-- `Refresh(NewList)`
+
+- `Refresh(NewList)` (resets selected value to first item or empty)
 - `Set(Value, FireCallback?)`
 - `Get()`
 
 Notes:
-- Uses virtualized row pool for large datasets.
 
-### SearchBox
-`Container:SearchBox(PlaceholderText, Options, Callback?)`
+- Uses a pooled virtual row renderer while opened.
+- Open list max visible height is `100` px.
 
-SearchBox options:
+### `Container:SearchBox(PlaceholderText, Options?, Callback?)`
+
+Options:
+
 - `location`
 - `flag`
-- `list` (array of suggestions)
+- `list` (array of suggestion rows)
 
-SearchBox callback:
+Callback:
+
 - `function(CurrentText) end`
 
-SearchBox returns:
+Returns:
+
 - `ReloadFunction`
 - `InputTextBox`
 - `ApiData`
 
-SearchBox API:
+`ApiData`:
+
 - `Refresh(NewList)` / `Reload(NewList)`
 - `Set(Value, FireCallback?)`
 - `Get()`
-- `Input` / `Box` (TextBox)
+- `Input` / `Box` (`TextBox`)
 
-### MultiSelectList
-`Container:MultiSelectList(Name, Options, Callback?)`
+### `Container:MultiSelectList(Name, Options?, Callback?)`
 
-MultiSelect options:
+Options:
+
 - `location`
 - `flag`
-- `list`
+- `list` (array)
 - `default` (array or map)
-- `search` (default true)
-- `sort` (default true)
-- `caseSensitive` (default false)
-- `rowHeight` (default 20)
-- `maxVisibleRows` (default 8)
-- `maxRows` (default 250, virtualized)
-- `listHeight`
+- `search` (`true` default)
+- `sort` (`true` default)
+- `caseSensitive` (`false` default)
+- `rowHeight` (default `20`)
+- `maxVisibleRows` (default `8`)
+- `maxRows` (default `250`, virtualization cap)
+- `listHeight` (clamped)
 - `placeholder`
 
-MultiSelect callback:
+Callback:
+
 - `function(SelectedMap, SelectedArray) end`
 
-MultiSelect API:
+API:
+
 - `Get(asArray?)`
 - `Set(ItemName, Enabled?, FireCallback?)`
-- `SetMany(valuesTable, Enabled?, FireCallback?)`
+- `SetMany(values, Enabled?, FireCallback?)`
 - `Clear(FireCallback?)`
 - `Refresh(NewList, PreserveSelected?, FireCallback?)`
 
-### ColorPicker
-`Container:ColorPicker(Name, Options, Callback?)`
+### `Container:ColorPicker(Name, Options?, Callback?)`
 
-ColorPicker options:
+Accepted call styles:
+
+- `ColorPicker(Name, Color3, Callback?)`
+- `ColorPicker(Name, Options, Callback?)`
+
+Options:
+
 - `location`
 - `flag`
-- `default` / `color`
-- `transparency` / `alpha`
-- `transparencylocation`
+- `default` / `color` (`Color3`)
+- `transparency` / `alpha` (`0..1`)
+- `transparencylocation` (table)
 - `transparencyflag` (default `<flag>_Transparency`)
-- `size` (picker UI size)
-- `wheelImage`
-- `wheelRadiusScale`
-- `wheelOutsidePadding`
-- `drag` / `draggable` (default true)
+- `size` (`90..180`, default `120`)
+- `wheelImage` (asset id)
+- `wheelRadiusScale` (`0.6..1`, default `1`)
+- `wheelOutsidePadding` (default `4`)
+- `drag` / `draggable` (`true` default)
 
-ColorPicker callback:
+Callback:
+
 - `function(Color3Value, Transparency0To1) end`
 
-ColorPicker API:
+API:
+
 - `Set(Color3, FireCallback?)`
 - `Get()`
 - `SetHSV(H, S, V, FireCallback?)`
@@ -459,108 +610,195 @@ ColorPicker API:
 - `SetAlpha(Alpha, FireCallback?)`
 - `GetAlpha()`
 
+UI behavior:
+
+- Click preview swatch to open popup.
+- Popup is modal-blocked with an invisible full-screen blocker.
+- Shade/alpha bars, HEX input, and RGB input all sync to current color.
+
 ## Notifications
 
 ### `Library:Notify(...)`
-Supports:
-- `Notify("Title", "Body", Duration, Options?)`
-- `Notify({ title=..., text=..., ... })`
 
-Notify options:
-- `title`, `text`
-- `duration` (`<=0` sticky)
-- `level` / `kind` / `type`: `info`, `success`, `warn`, `error`
-- `width`, `padding`, `maxNotifications`
-- `font`, `titleSize`, `textSize`
+Supported signatures:
+
+- `Library:Notify("Title", "Body", Duration, Options?)`
+- `Library:Notify({ title=..., text=..., ... })`
+
+Notification config keys:
+
+- `title`
+- `text`
+- `duration` (`<= 0` = sticky)
+- `level` / `kind` / `type` (`info`, `success`, `warn`, `warning`, `error`)
+- `width` / `size`
+- `padding`
+- `maxNotifications` / `maxnotifications`
+- `font`
+- `titleSize`
+- `textSize`
 - `backgroundColor` / `bgColor`
 - `borderColor`
 - `accentColor` / `levelColor`
-- `titleColor`, `textColor`
+- `titleColor`
+- `textColor`
 - `cornerRadius`
 
 Returns:
+
 - object with `Close(Instant?)` and `Destroy(Instant?)`
 
-Helpers:
+Aliases/helpers:
+
+- `Library:CreateNotification(...)`
+- `Library:Notification(...)`
 - `Library:NotifyInfo(...)`
 - `Library:NotifySuccess(...)`
 - `Library:NotifyWarn(...)`
 - `Library:NotifyError(...)`
-- `Library:CreateNotification(...)` and `Library:Notification(...)` (aliases)
 
-## Runtime Control Lookup
+### `Library:EnsureNotificationContainer()`
+
+Advanced/internal helper that creates and returns the notification container frame.
+
+## Tooltip API (Advanced)
+
+- `Library:EnsureTooltipGui()`
+- `Library:ShowTooltip(Source, TextResolver)`
+- `Library:HideTooltip()`
+- `Library:AttachTooltip(TargetGuiObject, TextOrResolver)`
+
+Notes:
+
+- Tooltips are shown near mouse (`+14, +12` offset).
+- `AttachTooltip` automatically cleans connections when target is removed.
+
+## Runtime Control Lookup and Dependencies
 
 ### `Library:GetControlApiByFlag(FlagName)`
-Gets control API registered to a `flag`.
+
+Returns registered control API or `nil`.
 
 ### `Library:GetControlApiByObject(Instance)`
-Gets control API by root GUI object.
+
+Returns registered control API for the control root object or `nil`.
 
 ### `Library:RefreshDependencies()`
-Forces dependency re-evaluation across controls.
 
-## Batch Updates and Callback Suspension
+Re-evaluates dependency states for tracked controls. Returns count refreshed.
 
-### `Library:SuspendCallbacks(State?)`
-- `true` (or no arg): increments suspend depth
-- `false`: decrements suspend depth
-- Returns: `(isSuspended, depth)`
-
-### `Library:ResumeCallbacks()`
-Alias for `SuspendCallbacks(false)`.
+## Callback Suspension and Batch Updates
 
 ### `Library:AreCallbacksSuspended()`
-Returns `true` when callback suspension depth > 0.
+
+Returns `true` when callback suspend depth > `0`.
+
+### `Library:SuspendCallbacks(State?)`
+
+- `nil`/`true`: increment depth
+- `false`: decrement depth
+
+Returns `(isSuspended, depth)`.
+
+### `Library:ResumeCallbacks()`
+
+Alias for `SuspendCallbacks(false)`.
 
 ### `Library:BeginBatchUpdate(options?)`
+
 Begins a batch context.
 
 Options:
-- `suspendCallbacks` (default `true`)
-- `refreshDependencies` (default `true`)
 
-Returns a batch context used by `EndBatchUpdate`.
+- `suspendCallbacks` (`true` default)
+- `refreshDependencies` (`true` default)
+
+Returns context table.
 
 ### `Library:EndBatchUpdate(context?, options?)`
-Ends a batch context and optionally refreshes dependencies.
+
+Ends a batch. Can also be called with boolean shorthand:
+
+- `EndBatchUpdate(true)` means `refreshDependencies = true`
+
+Returns:
+
+- `true` on success
+- `false, "batch already ended"` when ending same context twice
 
 ### `Library:BatchUpdate(worker, options?)`
-Convenience wrapper that:
-1. begins batch
-2. runs `worker(Library)`
-3. ends batch safely
 
-Example:
+Convenience wrapper:
 
-```lua
-Library:BatchUpdate(function()
-    SpeedSlider:Set(50)
-    FlyToggle:Set(true)
-    EspColor:Set(Color3.fromRGB(80, 170, 255), true)
-end, {
-    suspendCallbacks = true,
-    refreshDependencies = true,
-})
-```
+1. Begin batch
+2. `pcall(worker, Library)`
+3. End batch
+4. Re-throw worker error if any
+
+If `worker` is not a function, returns `false, "worker must be a function"`.
+
+## Flag Registry and Low-Level Flag APIs
+
+### `Library:RegisterFlagLocation(Location)`
+
+Registers a table location for fallback flag resolution.
+
+### `Library:RegisterFlag(Location, Flag)`
+
+Registers a flag name to one or more location tables.
+
+### `Library:RegisterFlagController(Location, Flag, Controller)`
+
+Registers controller table used for scripted apply operations.
+
+Controller shape:
+
+- must include `Set(Value, FireCallback?)` function
+
+### `Library:CollectScriptPresetData()`
+
+Collects script-wide values from all registered flags into one map.
+
+### `Library:ApplyScriptPresetData(Data, ShouldClear?)`
+
+Applies flag map script-wide by:
+
+1. controller `Set` functions when available
+2. registered flag locations fallback
+3. first fallback flag location as final fallback
+
+Returns:
+
+- `true` on success
+- `false, errorMessage` on invalid input
 
 ## Presets
 
 ### `Library:CreatePresetManager(ScriptKeyOrOptions?, MaybeOptions?)`
-Generic preset manager.
+
+Creates a generic preset manager.
+
+Constructor inputs:
+
+- `CreatePresetManager("MyScriptKey", options?)`
+- `CreatePresetManager(optionsTable)`
 
 Options:
-- `location` (table) for local scope mode
-- `scope` (`"script"` or other)
-- `scriptWide` / `global`
+
+- `location` (table for local scope)
+- `scope` (`"script"`, `"global"`, `"all"` -> script scope)
+- `scriptWide` (`boolean`)
+- `global` (`boolean`)
 - `scriptKey` / `scriptId`
 - `rootFolder` (default `WallyModifiedPresets`)
 - `extension` (default `.json`)
-- `clearOnLoad` (default true)
-- `separateByPlace` (default true)
-- `schemaVersion` / `version`
-- `migrations` (table of migration functions by version)
+- `clearOnLoad` (default `true`)
+- `separateByPlace` (default `true`)
+- `schemaVersion` / `version` (default `1`)
+- `migrations` (table keyed by version)
 
-Manager API:
+Manager methods:
+
 - `IsAvailable()`
 - `GetScriptKey()`
 - `GetFolder()`
@@ -571,51 +809,51 @@ Manager API:
 - `GetMigrations()`
 - `SetMigrations(table)`
 - `GetLocation()`
-- `SetLocation(table)` (forces local location mode)
+- `SetLocation(table)`
 - `IsScriptScope()`
 - `SetScriptKey(newKey)`
 - `GetPresetPath(name)`
 - `Save(name, SourceLocation?)`
-- `Export(name)` -> raw json string
+- `Export(name)`
 - `ExportCurrent(SourceLocation?)`
 - `Import(name, JsonContent, Overwrite?)`
 - `Load(name, TargetLocation?, OverrideClearOnLoad?)`
-- `LoadInto(name, TargetLocation, OverrideClearOnLoad?)`
+- `LoadInto(name, TargetLocation?, OverrideClearOnLoad?)`
 - `Exists(name)`
 - `Delete(name)`
 - `List()`
 
-### `Library:CreateScriptPresetManager(...)`
-Script-wide preset manager wrapper.
+Serialization details:
 
-Notes:
-- Forces script-wide scope (`scope = "script"`).
-- Also seeds window persistence root/script key from manager settings.
+- Stores non-primitive support for `Color3` and `EnumItem`.
+- Payload includes:
+  - `__wallyPreset = true`
+  - `schemaVersion`
+  - `savedAt`
+  - `build`
+  - `data`
+- On load, schema migrations run from stored version up to current schema.
+
+### `Library:CreateScriptPresetManager(ScriptKeyOrOptions?, MaybeOptions?)`
+
+Wrapper over `CreatePresetManager` that forces script scope.
+
+Behavior:
+
+- `scope = "script"`
+- `scriptWide = true`
+- `location = nil`
+- Sets library persistence defaults:
+  - `WindowPersistenceRootFolder`
+  - `WindowPersistenceScriptKey`
+  - `WindowPersistenceFileName` (`windows.json` default)
 
 ## Built-In Settings Window
 
-### `Library:SettingsWindows(options?)`
-Alias of `Library:SettingsWindow(options?)`.
+### `Library:SettingsWindow(options?)`
 
-Creates a dedicated settings window with:
-- Theme controls (toggle style, spacing, toggle colors, underline mode/color)
-- Preset controls (save/load/delete/refresh/export/import)
+Creates a dedicated settings window and returns:
 
-Important behavior:
-- Presets are script-wide.
-- Persistence root/script key are aligned with this settings preset manager.
-
-`options` highlights:
-- `title`
-- `windowOptions` (styles for settings window)
-- `scriptFolder` (root folder name for this script)
-- `presets` table:
-  - `extension`
-  - `clearOnLoad`
-  - `separateByPlace`
-  - `scriptFolder` / `folder` / `rootFolder`
-
-Return shape:
 - `Window`
 - `Theme`
 - `PresetManager`
@@ -623,33 +861,94 @@ Return shape:
 - `Sync()`
 - `RefreshPresets(preferredName?)`
 
+Settings window includes:
+
+- Window theme controls
+  - toggle style
+  - item spacing
+  - toggle on/off colors
+  - underline mode and color
+  - reset theme
+- Script preset controls
+  - save, load, delete, refresh
+  - export to clipboard
+  - import from clipboard
+  - schema version display
+
+`options`:
+
+- `title`
+- `windowOptions` (options passed to `CreateWindow` for this settings window)
+- `scriptFolder` / `folder` / `rootFolder` (preset root folder)
+- `defaultPresetName`
+- `extension`
+- `presets` table:
+  - `scriptFolder` / `folder` / `rootFolder`
+  - `extension`
+  - `clearOnLoad`
+  - `separateByPlace`
+
+### `Library:SettingsWindows(options?)`
+
+Alias/compat wrapper to `SettingsWindow(options?)`.
+
 ## Window Persistence
 
+### `Library:GetAutoScriptStorageKey()`
+
+Builds a stable script key from script identity + place id.
+
 ### `Library:AttachWindowPersistence(WindowData, WindowName, Options?)`
-Persists window position + minimized state to disk.
 
-Enable via:
-- window options `persistwindow = true`
-- or `persist = true`
-- or pass a `windowPersistence` table
+Attaches save/load of window position and minimized state.
 
-`windowPersistence` fields:
+Enable by either:
+
+- window options include `persist = true` or `persistwindow = true`, or
+- `windowPersistence = true` or `windowPersistence = { ... }`, or
+- global `Library.Options.persistwindow == true`
+
+`windowPersistence` options:
+
 - `enabled`
 - `rootFolder` / `folder`
 - `scriptFolder` / `scriptKey`
 - `fileName` (default `windows.json`)
 - `windowKey`
 
-Default persistence path:
-- Root from `WindowPersistenceRootFolder` or `WallyModifiedPresets`
-- Script folder from `WindowPersistenceScriptKey` or auto script key
-- File: `windows.json`
+Return values:
+
+- `true, filePath` when attached
+- `false, reason` when disabled/unavailable/invalid
+
+Stored JSON entry shape per window key:
+
+- `minimized`
+- `position.xScale`
+- `position.xOffset`
+- `position.yScale`
+- `position.yOffset`
+- `savedAt`
+- `build`
+
+## Low-Level Create Helper
+
+### `Library:Create(ClassName, Data)`
+
+Internal helper used by the library to build GUI objects.
+
+Behavior:
+
+- Any `Instance` value inside `Data` is parented to the created object.
+- Applies auto text scaling constraints to text classes based on settings.
+- Returns created instance.
 
 ## Executor Requirements
 
-Core UI works in Roblox/Luau environments with `loadstring`.
+Core UI requires Roblox Luau + `loadstring` support.
 
-Preset/persistence features require common exploit file APIs:
+Preset/persistence APIs require file APIs:
+
 - `isfolder`
 - `makefolder`
 - `isfile`
@@ -658,34 +957,27 @@ Preset/persistence features require common exploit file APIs:
 - `listfiles` (for listing presets)
 - `delfile` (for deleting presets)
 
-Clipboard import/export requires:
+Clipboard preset import/export requires:
+
 - `setclipboard`
 - `getclipboard`
 
-If unavailable, API returns a clear error string and settings window shows status.
+When unavailable, methods return `false, errorMessage` (or empty list + error for list calls).
 
 ## Debugging
 
-Set:
+Enable bind debug logs:
 
 ```lua
 Library.BindDebug = true
 ```
 
-This enables bind capture/trigger diagnostics in output.
+This prints bind capture and trigger diagnostics.
 
-## Full Practical Example
+## Practical Example
 
 See:
+
 - [`wally-modified-example.lua`](./wally-modified-example.lua)
 
-It demonstrates:
-- 4 windows
-- movement + ESP use case
-- tabs/subtabs
-- bind modes
-- dependency API
-- virtualized dropdown/list
-- notifications
-- settings window + script-wide presets + import/export
-- persistence
+The example demonstrates practical usage for windows, tabs, dependencies, presets, persistence, notifications, runtime APIs, and keybind modes.
