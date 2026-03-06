@@ -45,6 +45,9 @@ local WindowOptions = {
     width = 230,
     minwidth = 190,
     maxwidth = 420,
+    resizable = true,
+    resizeMinWidth = 190,
+    resizeMaxWidth = 420,
     autowidth = true,
     autowidthpadding = 12,
     itemspacing = 2,
@@ -56,6 +59,9 @@ local WindowOptions = {
 
 local MainWindow = Library:CreateWindow("Wally Practical - Main", WindowOptions)
 local UtilityWindow = Library:CreateWindow("Wally Practical - Utility", WindowOptions)
+Library:OnFlagChanged("WalkSpeed", function(NewValue, OldValue)
+    print("[OnFlagChanged] WalkSpeed:", OldValue, "->", NewValue)
+end)
 local SettingsWindowApi = Library:SettingsWindows({
     title = "Wally Practical - Settings",
     windowOptions = WindowOptions,
@@ -273,9 +279,13 @@ local WalkSpeedSlider = MainWindow:Slider("Walk Speed", {
     default = 16,
     precise = true,
     decimals = 1,
+    step = 0.5,
     valueWidth = 44,
 }, function()
     ApplyMovement()
+end)
+WalkSpeedSlider:OnChanged(function(Value)
+    print("[OnChanged] WalkSpeed slider:", Value)
 end)
 
 local JumpPowerBox = MainWindow:Box("Jump Power", {
@@ -324,6 +334,7 @@ local EspLineThicknessSlider = MainWindow:Slider("ESP Line Thickness", {
     default = 0.03,
     precise = true,
     decimals = 3,
+    step = 0.005,
     valueWidth = 52,
 }, function()
     RefreshEspForAllPlayers()
@@ -464,6 +475,24 @@ end)
 
 UtilityWindow:Section("Runtime API Demo")
 
+UtilityWindow:Button("Bring Utility To Front", function()
+    UtilityWindow:BringToFront()
+    StateLabel:Refresh("State: Utility window brought to front")
+end)
+
+UtilityWindow:Button("Center Utility Window", function()
+    UtilityWindow:Center()
+    StateLabel:Refresh("State: Utility window centered")
+end)
+
+UtilityWindow:Button("Nudge Utility +20 X", function()
+    local Position = UtilityWindow:GetPosition()
+    if Position then
+        UtilityWindow:SetPosition(Position.X.Offset + 20, Position.Y.Offset)
+        StateLabel:Refresh("State: Utility moved to X=" .. tostring(Position.X.Offset + 20))
+    end
+end)
+
 UtilityWindow:Button("Show Notification", function()
     Library:Notify({
         title = "Wally Modified",
@@ -589,6 +618,10 @@ UtilityWindow:Button("Box Return Demo (Set JumpPower TextBox)", function()
     StateLabel:Refresh("State: JumpPower set through Box return object")
 end)
 
+UtilityWindow:Button("Destroy Entire UI Library", function()
+    Library:Destroy()
+end)
+
 local AdvancedWindow = Library:CreateWindow("Wally Practical - Advanced", WindowOptions)
 local GeneralTab = AdvancedWindow:CreateTab("General")
 local AdvancedTab = AdvancedWindow:CreateTab("Advanced")
@@ -680,6 +713,12 @@ local HoldBind = AdvancedTab:Bind("Sprint Hold Bind", {
         WalkSpeedBeforeHold = nil
     end
     ApplyMovement()
+end)
+
+AdvancedSubTab:Button("Destroy Advanced Window", function()
+    if AdvancedWindow and AdvancedWindow.object and AdvancedWindow.object.Parent then
+        AdvancedWindow:Destroy()
+    end
 end)
 
 local ToggleBind = AdvancedSubTab:Bind("ESP Toggle Mode Bind", {
