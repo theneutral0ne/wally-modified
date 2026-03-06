@@ -13,7 +13,7 @@ Roblox UI library for script UIs with:
 - Toast notifications
 - Built-in settings window generator
 
-Current build in this repo: `2026-03-06.52`
+Current build in this repo: `2026-03-06.53`
 
 ## Loadstring
 
@@ -90,6 +90,8 @@ This index covers every current method defined with `function Library:...` and `
 - `Library:NotifyError(Title, Text, Duration, Options)`
 - `Library:GetControlApiByFlag(FlagName)`
 - `Library:GetControlApiByObject(Object)`
+- `Library:OnFlagChanged(FlagName?, Callback, Options?)`
+- `Library:EmitFlagChanged(FlagName, Location, NewValue, OldValue, Source?)`
 - `Library:RefreshDependencies()`
 - `Library:AreCallbacksSuspended()`
 - `Library:SuspendCallbacks(State?)`
@@ -113,6 +115,7 @@ This index covers every current method defined with `function Library:...` and `
 - `Library:GetAutoScriptStorageKey()`
 - `Library:AttachWindowPersistence(WindowData, WindowName, Options?)`
 - `Library:CreateWindow(Name, Options?)`
+- `Library:Destroy()`
 
 ### Container/Window Object Methods
 
@@ -155,6 +158,11 @@ Returned by `CreateWindow` (window object only):
 - `Window:SetAutoWidth(State, RefreshNow?)`
 - `Window:GetAutoWidth()`
 - `Window:RefreshAutoWidth(Force?)`
+- `Window:SetPosition(XOffset, YOffset)`
+- `Window:GetPosition()`
+- `Window:Center()`
+- `Window:BringToFront()`
+- `Window:Destroy()`
 
 ## Runtime Fields
 
@@ -209,6 +217,10 @@ Alias of `SetWindowOptions`.
 
 Re-applies visual options to current windows and registered toggle visuals.
 
+### `Library:Destroy()`
+
+Destroys all windows and UI roots created by the library, disconnects tracked connections, clears binds/callback registries, closes active popups/tooltips/notifications, and resets runtime state.
+
 ### Window Options (Defaults + Aliases)
 
 | Key | Type | Default | Notes |
@@ -239,6 +251,12 @@ Re-applies visual options to current windows and registered toggle visuals.
 | `windowwidth` | alias | - | Alias of `width` |
 | `minwidth` | `number` | `170` | Minimum window width |
 | `maxwidth` | `number` | `420` | Maximum window width |
+| `resizable` | `boolean` | `false` | Enables drag-resize handle |
+| `resizeGrip` | `boolean` | `true` | Shows/hides resize grip when resizable |
+| `resizeMinWidth` | `number` | `170` | Min width when resizing |
+| `resizeMaxWidth` | `number` | `420` | Max width when resizing |
+| `resizeMinWidthPixels` | alias | - | Alias of `resizeMinWidth` |
+| `resizeMaxWidthPixels` | alias | - | Alias of `resizeMaxWidth` |
 | `autowidth` | `boolean` | `false` | Expand width for long text |
 | `autoWidth` | alias | - | Alias of `autowidth` |
 | `autosize` | alias | - | Alias of `autowidth` |
@@ -294,6 +312,10 @@ All returned control APIs also gain:
 - `SetTooltip(TextOrNil)`
 - `RefreshDependency()`
 - `SetSearchMatch(IsMatch)` (internal but available)
+- `OnChanged(Function)`
+- `EmitChanged(...)` (internal but available)
+
+`OnChanged` returns a connection-like object with `Connected` and `Disconnect()`.
 
 ### Dependency Rule Shapes
 
@@ -417,6 +439,7 @@ Options:
 - `default` (defaults to `min`)
 - `precise` (`true` for decimals)
 - `decimals` (`0..6`, default `2`)
+- `step` (snaps value to interval; supports decimal steps)
 - `valueWidth` / `valuewidth` / `valueLabelWidth` (`24..80`, default `40`)
 
 Callback:
@@ -431,7 +454,8 @@ Slider API:
 Notes:
 
 - If `min > max`, values are swapped.
-- Non-precise sliders are integer (`math.floor`).
+- If `step` is provided, values snap to `min + n * step`.
+- Without `step`, non-precise sliders are integer (`math.floor`).
 
 ### `Container:Box(Name, Options?, Callback?)`
 
@@ -682,6 +706,28 @@ Returns registered control API or `nil`.
 ### `Library:GetControlApiByObject(Instance)`
 
 Returns registered control API for the control root object or `nil`.
+
+### `Library:OnFlagChanged(FlagName?, Callback, Options?)`
+
+Subscribes to flag changes emitted by Wally-controlled value writes.
+
+Usage:
+
+- `OnFlagChanged("WalkSpeed", function(NewValue, OldValue, Payload) ... end)`
+- `OnFlagChanged(function(FlagName, NewValue, OldValue, Payload) ... end)` for all flags
+
+`Options`:
+
+- `location` / `scopeLocation` (optional table filter)
+
+Returns a connection-like object with:
+
+- `Connected`
+- `Disconnect()`
+
+### `Library:EmitFlagChanged(FlagName, Location, NewValue, OldValue, Source?)`
+
+Manually emits a flag-change event to `OnFlagChanged` listeners. This is an advanced/runtime utility.
 
 ### `Library:RefreshDependencies()`
 
