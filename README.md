@@ -14,7 +14,7 @@ Roblox UI library for script UIs with:
 - Built-in settings window generator
 - Dedicated image preview windows
 
-Current build in this repo: `2026-03-06.55`
+Current build in this repo: `2026-03-06.57`
 
 ## Loadstring
 
