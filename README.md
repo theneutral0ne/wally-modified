@@ -14,7 +14,7 @@ Roblox UI library for script UIs with:
 - Built-in settings window generator
 - Dedicated image and model preview windows
 
-Current build in this repo: `2026-03-06.61`
+Current build in this repo: `2026-07-05.62`
 
 ## Loadstring
 
@@ -427,6 +427,8 @@ All returned control APIs also gain:
 - `GetVisible()`
 - `SetEnabled(State)`
 - `GetEnabled()`
+- `SetControlEnabled(State)`
+- `GetControlEnabled()`
 - `SetDependency(Rule)`
 - `SetVisibilityDependency(Rule)`
 - `SetEnabledDependency(Rule)`
@@ -437,6 +439,14 @@ All returned control APIs also gain:
 - `EmitChanged(...)` (internal but available)
 
 `OnChanged` returns a connection-like object with `Connected` and `Disconnect()`.
+
+`SetControlEnabled` / `GetControlEnabled` are the explicit interaction-state
+methods. `SetEnabled` / `GetEnabled` remain aliases on non-toggle controls. On
+toggle controls, `SetEnabled(Boolean)` and `GetEnabled()` are compatibility
+aliases for the toggle's boolean value; `SetEnabled` updates the checkmark,
+stored flag, and callback in the same way as `Set(Boolean)`. Use
+`SetControlEnabled(Boolean)` when you need to disable or enable clicking a
+toggle without changing its value.
 
 ### Dependency Rule Shapes
 
@@ -544,6 +554,10 @@ Toggle API:
 
 - `Set(Boolean)`
 - `Get()`
+- `SetEnabled(Boolean)` (compatibility alias for `Set`; fires the toggle callback)
+- `GetEnabled()` (compatibility alias for `Get`)
+- `SetControlEnabled(Boolean)` (enables/disables interaction without changing the value)
+- `GetControlEnabled()`
 
 Note:
 

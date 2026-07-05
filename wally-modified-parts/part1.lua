@@ -19,7 +19,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-03-06.61",
+    Build = "2026-07-05.62",
     BindDebug = false,
     CallbackSuspendDepth = 0,
     BatchUpdateDepth = 0,
@@ -921,6 +921,9 @@ local Defaults; do
                 Target.Active = IsEnabled;
                 if Target:IsA("TextButton") or Target:IsA("ImageButton") then
                     Target.AutoButtonColor = IsEnabled;
+                    pcall(function()
+                        Target.Interactable = IsEnabled;
+                    end);
                 end
                 if Target:IsA("TextBox") then
                     pcall(function()
@@ -1145,14 +1148,26 @@ local Defaults; do
                 return ControlVisible;
             end
 
-            function Api:SetEnabled(State)
+            function Api:SetControlEnabled(State)
                 ControlEnabled = CoerceBoolean(State, true);
                 EvaluateDependencies();
                 return ControlEnabled;
             end
 
-            function Api:GetEnabled()
+            function Api:GetControlEnabled()
                 return ControlEnabled;
+            end
+
+            if type(Api.SetEnabled) ~= "function" then
+                function Api:SetEnabled(State)
+                    return self:SetControlEnabled(State);
+                end
+            end
+
+            if type(Api.GetEnabled) ~= "function" then
+                function Api:GetEnabled()
+                    return self:GetControlEnabled();
+                end
             end
 
             function Api:SetVisibilityDependency(Rule)
@@ -1789,6 +1804,13 @@ local Defaults; do
                     SetToggleState(b, true);
                 end,
                 Get = function()
+                    return Location[Flag];
+                end,
+                SetEnabled = function(self, b)
+                    SetToggleState(b, true);
+                    return Location[Flag];
+                end,
+                GetEnabled = function()
                     return Location[Flag];
                 end
             };
