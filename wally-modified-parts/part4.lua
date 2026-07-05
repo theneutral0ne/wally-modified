@@ -883,8 +883,9 @@
     function Library:CreateWindow(Name, Options)
 			
         if (not Library.Container) then
-            local ParentGui = ResolveGuiParent();
+            local ParentGui = ResolveGuiParent(Options);
             local RootGui = self:Create("ScreenGui", {
+                ResetOnSpawn = false;
                 self:Create('Frame', {
                     Name = 'Container';
                     Size = UDim2.new(1, -30, 1, 0);

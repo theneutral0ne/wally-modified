@@ -14,7 +14,7 @@ Roblox UI library for script UIs with:
 - Built-in settings window generator
 - Dedicated image and model preview windows
 
-Current build in this repo: `2026-07-05.62`
+Current build in this repo: `2026-07-05.63`
 
 ## Loadstring
 
@@ -401,6 +401,7 @@ Destroys all windows and UI roots created by the library, disconnects tracked co
 | `notifymax` | `number` | `6` | Max visible notifications |
 | `notifypadding` | `number` | `6` | Notification list padding |
 | `persistwindow` | `boolean` | `false` | Enables window persistence attach |
+| `usehiddengui` / `useHiddenGui` | `boolean` | `false` | Use `gethui()`/`CoreGui` instead of `PlayerGui`; some environments lose access after yielding |
 
 ### WindowData Fields
 
