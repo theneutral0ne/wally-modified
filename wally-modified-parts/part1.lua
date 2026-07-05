@@ -20,7 +20,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-07-05.63",
+    Build = "2026-07-06.64",
     BindDebug = false,
     CallbackSuspendDepth = 0,
     BatchUpdateDepth = 0,
@@ -79,11 +79,25 @@ local Defaults; do
         Library.GlobalToggleConnection = UserInputService.InputBegan:Connect(function(Key, Gpe)
             if (not Gpe) then
                 if Key.KeyCode == Enum.KeyCode.RightControl then
-                    Library.Toggled = not Library.Toggled;
+                    local NewToggleState = not Library.Toggled;
+                    Library.Toggled = NewToggleState;
                     for _, Data in next, Library.Queue do
-                        local Position = (Library.Toggled and Data.Position or UDim2.new(-1, 0, -0.5,0))
-                        if Data.Window and Data.Window.Parent then
-                            Data.Window:TweenPosition(Position, (Library.Toggled and 'Out' or 'In'), 'Quad', 0.15, true)
+                        local QueueData = Data;
+                        if QueueData.Window and QueueData.Window.Parent then
+                            if (not NewToggleState) and (not QueueData.SuppressPositionSync) then
+                                QueueData.Position = QueueData.Window.Position;
+                            end
+
+                            QueueData.ToggleTweenGeneration = (QueueData.ToggleTweenGeneration or 0) + 1;
+                            local TweenGeneration = QueueData.ToggleTweenGeneration;
+                            QueueData.SuppressPositionSync = true;
+
+                            local Position = (NewToggleState and QueueData.Position or UDim2.new(-1, 0, -0.5, 0));
+                            QueueData.Window:TweenPosition(Position, (NewToggleState and 'Out' or 'In'), 'Quad', 0.15, true, function()
+                                if QueueData.ToggleTweenGeneration == TweenGeneration then
+                                    QueueData.SuppressPositionSync = false;
+                                end
+                            end);
                         end
                     end
                 end
@@ -269,7 +283,9 @@ local Defaults; do
             local function UpdateQueueStoredPosition()
                 for _, QueueData in next, Library.Queue do
                     if QueueData and QueueData.Window == NewWindow then
-                        QueueData.Position = NewWindow.Position;
+                        if not QueueData.SuppressPositionSync then
+                            QueueData.Position = NewWindow.Position;
+                        end
                         break;
                     end
                 end
@@ -366,6 +382,8 @@ local Defaults; do
             table.insert(Library.Queue, {
                 Window = WindowData.object;
                 Position = WindowData.object.Position;
+                SuppressPositionSync = false;
+                ToggleTweenGeneration = 0;
             })
             table.insert(Library.Windows, WindowData);
 
