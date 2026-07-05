@@ -1761,13 +1761,13 @@ local Defaults; do
                 
             local function SetToggleState(NewValue, FireCallback)
                 SetFlagValue(Location, Flag, (NewValue == true), ApiData, false);
+                UpdateVisualState();
                 if ShouldDispatchCallback(FireCallback) then
                     Callback(Location[Flag]);
                     if ApiData and type(ApiData.EmitChanged) == "function" then
                         ApiData:EmitChanged(Location[Flag]);
                     end
                 end
-                UpdateVisualState();
             end
 
             local function Click()
