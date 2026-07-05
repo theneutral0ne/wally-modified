@@ -2167,6 +2167,7 @@
         notifymax = 6;
         notifypadding = 6;
         persistwindow = false;
+        usehiddengui = false;
 
         placeholdercolor = Color3.fromRGB(255, 255, 255);
         titlestrokecolor = Color3.fromRGB(0, 0, 0);

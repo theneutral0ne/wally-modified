@@ -1,6 +1,7 @@
 local UserInputService = game:GetService("UserInputService");
 local RunService = game:GetService("RunService");
 local Debris = game:GetService("Debris");
+local Players = game:GetService("Players");
 local CoreGui = game:GetService("CoreGui");
 local HttpService = game:GetService("HttpService");
 local TextService = game:GetService("TextService");
@@ -19,7 +20,7 @@ local Library = {
     FlagLocationLookup = {},
     RegisteredFlags = {},
     FlagControllers = {},
-    Build = "2026-07-05.62",
+    Build = "2026-07-05.63",
     BindDebug = false,
     CallbackSuspendDepth = 0,
     BatchUpdateDepth = 0,
@@ -91,15 +92,31 @@ local Defaults; do
         table.insert(Library.InternalConnections, Library.GlobalToggleConnection);
     end
 
-    local function ResolveGuiParent()
-        local ParentGui = CoreGui;
+    local function ResolveGuiParent(Options)
+        local ActiveOptions = type(Options) == "table" and Options or Library.Options or {};
+        local UseHiddenGui = (
+            ActiveOptions.usehiddengui == true
+            or ActiveOptions.useHiddenGui == true
+            or ActiveOptions.hiddenui == true
+            or ActiveOptions.hiddenUi == true
+        );
+
+        if not UseHiddenGui then
+            local LocalPlayer = Players.LocalPlayer;
+            local PlayerGui = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui");
+            if PlayerGui then
+                return PlayerGui;
+            end
+        end
+
         if type(gethui) == "function" then
             local Ok, Gui = pcall(gethui);
             if Ok and Gui then
-                ParentGui = Gui;
+                return Gui;
             end
         end
-        return ParentGui;
+
+        return CoreGui;
     end
     
 	    local Types = {}; do
